@@ -3,6 +3,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { orders, varieties, timeSlots } from '../db/schema';
 import { stripe } from '../lib/stripe';
+import { logger } from '../lib/logger';
 
 const router = Router();
 
@@ -76,6 +77,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.status(201).json({ order, client_secret: paymentIntent.client_secret });
   } catch (err) {
+    logger.error('Order creation error', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -120,6 +122,7 @@ router.post('/:id/confirm', async (req: Request, res: Response) => {
     const [updated] = await db.select().from(orders).where(eq(orders.id, id));
     res.json(updated);
   } catch (err) {
+    logger.error('Order confirm error', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
