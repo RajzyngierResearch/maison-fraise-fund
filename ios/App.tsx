@@ -3,6 +3,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { StripeProvider } from '@stripe/stripe-react-native';
 import {
   useFonts,
   PlayfairDisplay_400Regular,
@@ -33,11 +34,5 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <OrderProvider>
-        <NavigationContainer>
-          <BottomTabNavigator />
-        </NavigationContainer>
-      </OrderProvider>
-    </SafeAreaProvider>
-  );
-}
+      <StripeProvider publishableKey="pk_live_YOUR_KEY_HERE">
+        <OrderProvider></OrderProvider>

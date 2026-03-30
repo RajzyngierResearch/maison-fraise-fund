@@ -1,17 +1,19 @@
-
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
   Alert,
+  TextInput,
   StyleSheet,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useStripe } from '@stripe/stripe-react-native';
 import { useOrder } from '../../context/OrderContext';
+import { createOrder } from '../../lib/api';
 import { COLORS, SPACING } from '../../theme';
 import { OrderStackParamList } from '../../types';
 import ProgressBar from '../../components/ProgressBar';
@@ -30,62 +32,92 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
 
 export default function Step7ReviewScreen() {
   const navigation = useNavigation<Nav>();
-  const { order, resetOrder } = useOrder();
+  const { order, resetOrder, setCustomerEmail } = useOrder();
   const insets = useSafeAreaInsets();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
 
   const total =
-    order.strawberry && order.quantity
-      ? (order.strawberry.price * order.quantity).toFixed(2)
+    order.variety_id && order.quantity
+      ? (order.quantity * 5.5).toFixed(2) // placeholder until price comes from API
       : '—';
 
   const handlePlaceOrder = async () => {
-  try {
-    const response = await fetch(
-      'https://maison-fraise-v2-production.up.railway.app/api/orders',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          strawberryId: order.strawberry?.id,
-          chocolateId: order.chocolate?.id,
-          finishId: order.finish?.id,
-          quantity: order.quantity,
-          locationId: order.location?.id,
-          date: order.date,
-          timeSlot: order.timeSlot?.time,
-          isGift: order.isGift,
-        }),
+    if (!email || !email.includes('@')) {
+      Alert.alert('Email required', 'Please enter a valid email address.');
+      return;
+    }
+
+    if (
+      !order.variety_id ||
+      !order.location_id ||
+      !order.time_slot_id ||
+      !order.chocolateId ||
+      !order.finishId
+    ) {
+      Alert.alert('Incomplete order', 'Please complete all steps before placing your order.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      setCustomerEmail(email);
+
+      const { order: createdOrder, client_secret } = await createOrder({
+        variety_id: order.variety_id,
+        location_id: order.location_id,
+        time_slot_id: order.time_slot_id,
+        chocolate: order.chocolateId,
+        finish: order.finishId,
+        quantity: order.quantity,
+        is_gift: order.isGift,
+        customer_email: email,
+      });
+
+      const { error: initError } = await initPaymentSheet({
+        paymentIntentClientSecret: client_secret,
+        merchantDisplayName: 'Maison Fraise',
+      });
+
+      if (initError) {
+        Alert.alert('Payment error', initError.message);
+        setLoading(false);
+        return;
       }
-    );
 
-    if (!response.ok) throw new Error('Order failed');
+      const { error: presentError } = await presentPaymentSheet();
 
-    Alert.alert(
-      'Order placed.',
-      `Your ${order.strawberry?.name ?? 'order'} will be ready for collection.`,
-      [
-        {
-          text: 'Done',
-          onPress: () => {
-            resetOrder();
-            navigation.navigate('Step1Strawberry');
+      if (presentError) {
+        Alert.alert('Payment cancelled', presentError.message);
+        setLoading(false);
+        return;
+      }
+
+      Alert.alert(
+        'Order placed.',
+        `Your ${order.strawberryName ?? 'order'} will be ready for collection.`,
+        [
+          {
+            text: 'Done',
+            onPress: () => {
+              resetOrder();
+              navigation.navigate('Step1Strawberry');
+            },
           },
-        },
-      ]
-    );
-  } catch (err) {
-    Alert.alert('Something went wrong.', 'Please try again.');
-  }
-};
+        ]
+      );
+    } catch (err) {
+      Alert.alert('Something went wrong.', 'Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backText}>← BACK</Text>
         </TouchableOpacity>
         <ProgressBar current={7} total={7} />
@@ -98,47 +130,29 @@ export default function Step7ReviewScreen() {
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Summary illustration */}
         <View style={styles.illustrationRow}>
           <StrawberrySVG size={54} />
         </View>
 
-        {/* Review rows */}
         <View style={styles.reviewCard}>
-          <ReviewRow
-            label="STRAWBERRY"
-            value={order.strawberry?.name ?? '—'}
-          />
+          <ReviewRow label="STRAWBERRY" value={order.strawberryName ?? '—'} />
           <View style={styles.divider} />
-          <ReviewRow
-            label="CHOCOLATE"
-            value={order.chocolate?.name ?? '—'}
-          />
+          <ReviewRow label="CHOCOLATE" value={order.chocolateName ?? '—'} />
           <View style={styles.divider} />
-          <ReviewRow
-            label="FINISH"
-            value={order.finish?.name ?? '—'}
-          />
+          <ReviewRow label="FINISH" value={order.finishName ?? '—'} />
           <View style={styles.divider} />
           <ReviewRow
             label="QUANTITY"
-            value={
-              order.strawberry
-                ? `${order.quantity} × CA$${order.strawberry.price.toFixed(2)}`
-                : '—'
-            }
+            value={order.quantity ? `${order.quantity}` : '—'}
           />
           <View style={styles.divider} />
-          <ReviewRow
-            label="COLLECTION"
-            value={order.location?.name ?? '—'}
-          />
+          <ReviewRow label="COLLECTION" value={order.locationName ?? '—'} />
           <View style={styles.divider} />
           <ReviewRow
             label="WHEN"
             value={
-              order.date && order.timeSlot
-                ? `${order.date} at ${order.timeSlot.time}`
+              order.date && order.timeSlotTime
+                ? `${order.date} at ${order.timeSlotTime}`
                 : '—'
             }
           />
@@ -150,26 +164,35 @@ export default function Step7ReviewScreen() {
           )}
         </View>
 
-        {/* Total */}
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>TOTAL</Text>
           <Text style={styles.totalAmount}>CA${total}</Text>
         </View>
+
+        <View style={styles.emailCard}>
+          <Text style={styles.emailLabel}>EMAIL FOR RECEIPT</Text>
+          <TextInput
+            style={styles.emailInput}
+            placeholder="your@email.com"
+            placeholderTextColor={COLORS.textMuted}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+        </View>
       </ScrollView>
 
-      {/* Place order button */}
-      <View
-        style={[
-          styles.footer,
-          { paddingBottom: Math.max(insets.bottom, 12) + 8 },
-        ]}
-      >
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
         <TouchableOpacity
-          style={styles.placeOrderBtn}
+          style={[styles.placeOrderBtn, loading && styles.placeOrderBtnDisabled]}
           onPress={handlePlaceOrder}
           activeOpacity={0.85}
+          disabled={loading}
         >
-          <Text style={styles.placeOrderText}>Place Order  →</Text>
+          <Text style={styles.placeOrderText}>
+            {loading ? 'Processing...' : 'Place Order  →'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -177,10 +200,7 @@ export default function Step7ReviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    backgroundColor: COLORS.forestGreen,
-    paddingBottom: 22,
-  },
+  header: { backgroundColor: COLORS.forestGreen, paddingBottom: 22 },
   backBtn: { paddingHorizontal: 20, paddingVertical: 6 },
   backText: { color: 'rgba(255,255,255,0.6)', fontSize: 13 },
   stepLabel: {
@@ -195,87 +215,4 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: 30,
     fontFamily: 'PlayfairDisplay_700Bold',
-    paddingHorizontal: 20,
-    marginTop: 4,
-  },
-  illustrationRow: {
-    alignItems: 'center',
-    paddingVertical: 24,
-  },
-  reviewCard: {
-    backgroundColor: COLORS.cardBg,
-    marginHorizontal: SPACING.md,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  reviewRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 14,
-    gap: 16,
-  },
-  reviewLabel: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    letterSpacing: 1.4,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  reviewValue: {
-    fontSize: 15,
-    color: COLORS.textDark,
-    fontFamily: 'PlayfairDisplay_700Bold',
-    textAlign: 'right',
-    flex: 1,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: COLORS.border,
-    marginHorizontal: SPACING.md,
-  },
-  totalCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 18,
-    backgroundColor: COLORS.forestGreen,
-    borderRadius: 14,
-  },
-  totalLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    fontWeight: '600',
-  },
-  totalAmount: {
-    color: COLORS.white,
-    fontSize: 22,
-    fontFamily: 'PlayfairDisplay_700Bold',
-  },
-  footer: {
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
-  },
-  placeOrderBtn: {
-    backgroundColor: COLORS.forestGreen,
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  placeOrderText: {
-    color: COLORS.white,
-    fontSize: 14,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    fontWeight: '700',
-  },
-});
+    padd

@@ -38,28 +38,13 @@ function StrawberryOption({
     >
       <View style={styles.optionHeader}>
         <View style={styles.optionTitleRow}>
-          <Text style={[styles.optionFlag]}>{strawberry.flag}</Text>
-          <Text
-            style={[
-              styles.optionName,
-              selected && styles.textWhite,
-            ]}
-          >
+          <Text style={styles.optionFlag}>{strawberry.flag}</Text>
+          <Text style={[styles.optionName, selected && styles.textWhite]}>
             {strawberry.name}
           </Text>
           {strawberry.tag && (
-            <View
-              style={[
-                styles.badge,
-                selected ? styles.badgeWhite : styles.badgeGreen,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.badgeText,
-                  selected ? styles.badgeTextDark : styles.badgeTextGreen,
-                ]}
-              >
+            <View style={[styles.badge, selected ? styles.badgeWhite : styles.badgeGreen]}>
+              <Text style={[styles.badgeText, selected ? styles.badgeTextDark : styles.badgeTextGreen]}>
                 {strawberry.tag}
               </Text>
             </View>
@@ -81,7 +66,7 @@ function StrawberryOption({
 
 export default function Step1StrawberryScreen() {
   const navigation = useNavigation<Nav>();
-  const { order, setStrawberry } = useOrder();
+  const { order, setVariety } = useOrder();
   const insets = useSafeAreaInsets();
 
   const handleBack = () => {
@@ -90,7 +75,6 @@ export default function Step1StrawberryScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Text style={styles.backText}>← BACK</Text>
@@ -109,25 +93,17 @@ export default function Step1StrawberryScreen() {
           <StrawberryOption
             key={s.id}
             strawberry={s}
-            selected={order.strawberry?.id === s.id}
-            onSelect={() => setStrawberry(s)}
+            selected={order.strawberryName === s.name}
+            onSelect={() => setVariety(0, s.name)}
           />
         ))}
       </ScrollView>
 
-      {/* Continue */}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
         <TouchableOpacity
-          style={[
-            styles.continueBtn,
-            !order.strawberry && styles.continueBtnDisabled,
-          ]}
-          onPress={
-            order.strawberry
-              ? () => navigation.navigate('Step2Chocolate')
-              : undefined
-          }
-          activeOpacity={order.strawberry ? 0.82 : 1}
+          style={[styles.continueBtn, !order.strawberryName && styles.continueBtnDisabled]}
+          onPress={order.strawberryName ? () => navigation.navigate('Step2Chocolate') : undefined}
+          activeOpacity={order.strawberryName ? 0.82 : 1}
         >
           <Text style={styles.continueBtnText}>Continue to Chocolate  →</Text>
         </TouchableOpacity>
@@ -137,10 +113,7 @@ export default function Step1StrawberryScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    backgroundColor: COLORS.forestGreen,
-    paddingBottom: 22,
-  },
+  header: { backgroundColor: COLORS.forestGreen, paddingBottom: 22 },
   backBtn: { paddingHorizontal: 20, paddingVertical: 6 },
   backText: { color: 'rgba(255,255,255,0.6)', fontSize: 13 },
   stepLabel: {
@@ -158,59 +131,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 4,
   },
-  list: {
-    padding: SPACING.md,
-    gap: SPACING.sm,
-  },
-  option: {
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 12,
-    padding: SPACING.md,
-    gap: 6,
-  },
-  optionSelected: {
-    backgroundColor: COLORS.forestGreen,
-  },
-  optionHighlighted: {
-    backgroundColor: '#F5E8C8',
-    borderWidth: 1.5,
-    borderColor: 'rgba(196,151,58,0.4)',
-  },
-  optionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  optionTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-    flexWrap: 'wrap',
-  },
+  list: { padding: SPACING.md, gap: SPACING.sm },
+  option: { backgroundColor: COLORS.cardBg, borderRadius: 12, padding: SPACING.md, gap: 6 },
+  optionSelected: { backgroundColor: COLORS.forestGreen },
+  optionHighlighted: { backgroundColor: '#F5E8C8', borderWidth: 1.5, borderColor: 'rgba(196,151,58,0.4)' },
+  optionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  optionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, flexWrap: 'wrap' },
   optionFlag: { fontSize: 15 },
-  optionName: {
-    fontSize: 17,
-    fontFamily: 'PlayfairDisplay_700Bold',
-    color: COLORS.textDark,
-  },
-  optionPrice: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.textDark,
-  },
+  optionName: { fontSize: 17, fontFamily: 'PlayfairDisplay_700Bold', color: COLORS.textDark },
+  optionPrice: { fontSize: 15, fontWeight: '600', color: COLORS.textDark },
   optionFarm: { fontSize: 12, color: COLORS.textMuted },
-  optionDesc: {
-    fontSize: 13,
-    color: COLORS.textDark,
-    fontStyle: 'italic',
-    lineHeight: 19,
-  },
-  badge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 20,
-  },
+  optionDesc: { fontSize: 13, color: COLORS.textDark, fontStyle: 'italic', lineHeight: 19 },
+  badge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 20 },
   badgeGreen: { backgroundColor: COLORS.greenBadgeBg },
   badgeWhite: { backgroundColor: 'rgba(255,255,255,0.22)' },
   badgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
@@ -218,25 +150,8 @@ const styles = StyleSheet.create({
   badgeTextDark: { color: COLORS.white },
   textWhite: { color: COLORS.white },
   textWhiteMuted: { color: 'rgba(255,255,255,0.55)' },
-  footer: {
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
-  },
-  continueBtn: {
-    backgroundColor: COLORS.forestGreen,
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
+  footer: { backgroundColor: COLORS.cream, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border },
+  continueBtn: { backgroundColor: COLORS.forestGreen, borderRadius: 30, paddingVertical: 16, alignItems: 'center' },
   continueBtnDisabled: { opacity: 0.35 },
-  continueBtnText: {
-    color: COLORS.white,
-    fontSize: 13,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    fontWeight: '600',
-  },
+  continueBtnText: { color: COLORS.white, fontSize: 13, letterSpacing: 1.2, textTransform: 'uppercase', fontWeight: '600' },
 });
