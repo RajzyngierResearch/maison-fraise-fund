@@ -30,7 +30,7 @@ slotsRouter.get('/', async (req: Request, res: Response) => {
   }
 
   try {
-    const rows = await db
+    let rows = await db
       .select()
       .from(timeSlots)
       .where(
@@ -40,6 +40,20 @@ slotsRouter.get('/', async (req: Request, res: Response) => {
         )
       )
       .orderBy(timeSlots.time);
+
+    // Generate slots on-demand if none exist for this date
+    if (rows.length === 0) {
+      const hours = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
+      const newSlots = hours.map((time) => ({
+        location_id: locationIdNum,
+        date: String(date),
+        time,
+        capacity: Math.floor(Math.random() * 4) + 2,
+        booked: 0,
+      }));
+      rows = await db.insert(timeSlots).values(newSlots).returning();
+      rows.sort((a, b) => a.time.localeCompare(b.time));
+    }
 
     res.json(
       rows.map((s) => ({ ...s, available: s.capacity - s.booked }))
