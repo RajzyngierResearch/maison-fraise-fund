@@ -33,6 +33,8 @@ app.use('/api/supplier', supplierRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+app.use(express.static(path.join(__dirname, '../public')));
+
 app.get('/operator', (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/operator.html'));
 });
