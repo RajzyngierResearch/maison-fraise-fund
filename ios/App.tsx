@@ -34,5 +34,5 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <StripeProvider publishableKey="pk_live_YOUR_KEY_HERE">
+      <StripeProvider publishableKey="pk_live_51TERLgAABIW5Ps3LHbYb27AtAjtEwJLXlKFRJsUbaGfPISwfUvx6qrjjeJi11YDldwf42ko4OEwSDiAOIP2e4V1g00zaKrAYDR">
         <OrderProvider></OrderProvider>
