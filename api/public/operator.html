@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Maison Fraise — Operator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:   #1C3A2A;
+      --green2:  #2A5240;
+      --cream:   #F5F0E8;
+      --card:    #EDEAE0;
+      --text:    #1C1C1E;
+      --muted:   #6B6B6B;
+      --border:  rgba(28,58,42,0.12);
+      --gold:    #C4973A;
+      --red:     #C0392B;
+      --radius:  14px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--cream);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── PIN SCREEN ─────────────────────────────────── */
+    #pin-screen {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+      gap: 32px;
+    }
+
+    .logo-block { text-align: center; }
+    .logo-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      color: var(--green);
+      letter-spacing: 0.5px;
+    }
+    .logo-sub {
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .pin-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 2px 20px rgba(28,58,42,0.08);
+    }
+
+    .pin-label {
+      font-size: 11px;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .pin-input {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 18px;
+      letter-spacing: 6px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: var(--cream);
+      color: var(--text);
+      outline: none;
+      text-align: center;
+    }
+    .pin-input:focus { border-color: var(--green); }
+
+    .pin-btn {
+      width: 100%;
+      padding: 15px;
+      background: var(--green);
+      color: white;
+      border: none;
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .pin-btn:active { opacity: 0.8; }
+
+    .pin-error {
+      font-size: 13px;
+      color: var(--red);
+      text-align: center;
+      min-height: 18px;
+    }
+
+    /* ── DASHBOARD SHELL ────────────────────────────── */
+    #dashboard { display: none; flex-direction: column; min-height: 100vh; }
+
+    .dash-header {
+      background: var(--green);
+      padding: 52px 20px 20px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .dash-header-left { display: flex; flex-direction: column; gap: 4px; }
+    .dash-role {
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      font-weight: 600;
+    }
+    .dash-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 30px;
+      color: white;
+    }
+    .dash-date { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+    .logout-btn {
+      background: rgba(255,255,255,0.12);
+      border: none;
+      color: rgba(255,255,255,0.7);
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 8px 14px;
+      border-radius: 20px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .dash-body { flex: 1; padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── FILTER PILLS ───────────────────────────────── */
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      scrollbar-width: none;
+    }
+    .filter-row::-webkit-scrollbar { display: none; }
+
+    .pill {
+      flex-shrink: 0;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      border: 1.5px solid var(--border);
+      background: white;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .pill.active { background: var(--green); color: white; border-color: var(--green); }
+
+    /* ── ORDER CARD ─────────────────────────────────── */
+    .order-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 1px 6px rgba(28,58,42,0.06);
+    }
+
+    .order-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .order-id { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
+    .order-email { font-size: 13px; color: var(--text); font-weight: 500; margin-top: 2px; }
+
+    .status-badge {
+      flex-shrink: 0;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    .order-items { display: flex; flex-direction: column; gap: 4px; }
+    .order-variety { font-family: 'Playfair Display', serif; font-size: 17px; color: var(--text); }
+    .order-details { font-size: 13px; color: var(--muted); }
+    .order-meta { font-size: 12px; color: var(--muted); }
+
+    .gift-badge {
+      display: inline-block;
+      background: #FFF3CD;
+      color: #856404;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      text-transform: uppercase;
+    }
+
+    .action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    .action-btn {
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: 1.5px solid var(--border);
+      background: var(--cream);
+      color: var(--text);
+      transition: all 0.15s;
+    }
+    .action-btn:active { opacity: 0.7; }
+    .action-btn.primary { background: var(--green); color: white; border-color: var(--green); }
+    .action-btn.danger { background: var(--red); color: white; border-color: var(--red); }
+
+    /* ── ALERT CARD ─────────────────────────────────── */
+    .alert-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 6px rgba(28,58,42,0.06);
+    }
+    .alert-name { font-family: 'Playfair Display', serif; font-size: 17px; color: var(--text); }
+    .alert-farm { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .stock-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--red);
+    }
+    .stock-label { font-size: 10px; color: var(--muted); text-align: center; letter-spacing: 0.5px; text-transform: uppercase; }
+
+    /* ── SLOT GROUP ─────────────────────────────────── */
+    .slot-group { display: flex; flex-direction: column; gap: 8px; }
+    .slot-heading {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 4px;
+    }
+
+    /* ── EMPTY / LOADING ────────────────────────────── */
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+      font-style: italic;
+      padding: 40px 0;
+    }
+
+    /* ── STATUS COLORS ──────────────────────────────── */
+    .s-pending    { background: #F0F0F0; color: #6B6B6B; }
+    .s-paid       { background: #D4EDDA; color: #1A5C2E; }
+    .s-preparing  { background: #FFF0D4; color: #7A4A00; }
+    .s-ready      { background: #D0E8FF; color: #003E7A; }
+    .s-collected  { background: #E8F5E9; color: #1C3A2A; }
+    .s-cancelled  { background: #FDECEA; color: #7A1A1A; }
+  </style>
+</head>
+<body>
+
+<!-- PIN SCREEN -->
+<div id="pin-screen">
+  <div class="logo-block">
+    <div class="logo-title">Maison Fraise</div>
+    <div class="logo-sub">Operator Access</div>
+  </div>
+  <div class="pin-card">
+    <div class="pin-label">Enter PIN</div>
+    <input id="pin-input" class="pin-input" type="password" inputmode="numeric" maxlength="20" placeholder="·····" autocomplete="off" />
+    <button class="pin-btn" onclick="submitPin()">Enter</button>
+    <div class="pin-error" id="pin-error"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="dash-header">
+    <div class="dash-header-left">
+      <div class="dash-role" id="dash-role"></div>
+      <div class="dash-title" id="dash-title"></div>
+      <div class="dash-date" id="dash-date"></div>
+    </div>
+    <button class="logout-btn" onclick="logout()">Sign out</button>
+  </div>
+  <div class="dash-body" id="dash-body"></div>
+</div>
+
+<script>
+  const BASE = '';
+  let currentRole = null;
+  let currentPin = null;
+  let currentFilter = 'all';
+  let allOrders = [];
+  let varieties = {};
+
+  const CHOCOLATE_NAMES = {
+    guanaja_70: 'Guanaja 70%',
+    caraibe_66: 'Caraïbe 66%',
+    jivara_40: 'Jivara 40%',
+    ivoire_blanc: 'Ivoire Blanc',
+  };
+  const FINISH_NAMES = {
+    plain: 'Plain',
+    fleur_de_sel: 'Fleur de Sel',
+    or_fin: 'Or Fin',
+  };
+  const STATUS_NEXT = {
+    pending: null,
+    paid: 'preparing',
+    preparing: 'ready',
+    ready: 'collected',
+    collected: null,
+    cancelled: null,
+  };
+  const STATUS_LABEL = {
+    pending: 'Pending',
+    paid: 'Paid',
+    preparing: 'Preparing',
+    ready: 'Ready',
+    collected: 'Collected',
+    cancelled: 'Cancelled',
+  };
+
+  function today() {
+    const d = new Date();
+    return d.toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  async function submitPin() {
+    const pin = document.getElementById('pin-input').value.trim();
+    const err = document.getElementById('pin-error');
+    err.textContent = '';
+    if (!pin) return;
+
+    // Try each role in order
+    const roles = [
+      { role: 'admin',       header: 'X-Admin-PIN',       url: '/api/admin/orders' },
+      { role: 'chocolatier', header: 'X-Chocolatier-PIN', url: '/api/chocolatier/orders' },
+      { role: 'supplier',    header: 'X-Supplier-PIN',    url: '/api/supplier/alerts' },
+    ];
+
+    for (const { role, header, url } of roles) {
+      const res = await fetch(BASE + url, { headers: { [header]: pin } });
+      if (res.ok) {
+        currentRole = role;
+        currentPin = pin;
+        document.getElementById('pin-screen').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'flex';
+        await loadDashboard(role, await res.json());
+        return;
+      }
+    }
+
+    err.textContent = 'Invalid PIN.';
+    document.getElementById('pin-input').value = '';
+  }
+
+  function logout() {
+    currentRole = null;
+    currentPin = null;
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('pin-screen').style.display = 'flex';
+    document.getElementById('pin-input').value = '';
+    document.getElementById('pin-error').textContent = '';
+  }
+
+  async function loadDashboard(role, data) {
+    const roleLabel = { admin: 'Admin', chocolatier: 'Chocolatier', supplier: 'Supplier' };
+    const titleLabel = { admin: 'Orders', chocolatier: 'Today', supplier: 'Stock Alerts' };
+
+    document.getElementById('dash-role').textContent = roleLabel[role];
+    document.getElementById('dash-title').textContent = titleLabel[role];
+    document.getElementById('dash-date').textContent = today();
+
+    if (role === 'admin') {
+      // Also fetch variety names
+      try {
+        const vRes = await fetch(BASE + '/api/varieties');
+        const vList = await vRes.json();
+        varieties = {};
+        vList.forEach(v => varieties[v.id] = v);
+      } catch (_) {}
+      allOrders = data;
+      renderAdmin();
+    } else if (role === 'chocolatier') {
+      renderChocolatier(data);
+    } else if (role === 'supplier') {
+      renderSupplier(data);
+    }
+  }
+
+  // ── ADMIN ──────────────────────────────────────────
+
+  function renderAdmin() {
+    const body = document.getElementById('dash-body');
+    const statuses = ['all', 'pending', 'paid', 'preparing', 'ready', 'collected', 'cancelled'];
+    const filtered = currentFilter === 'all' ? allOrders : allOrders.filter(o => o.status === currentFilter);
+
+    const filterHtml = `
+      <div class="filter-row">
+        ${statuses.map(s => `
+          <div class="pill ${currentFilter === s ? 'active' : ''}" onclick="setFilter('${s}')">
+            ${s === 'all' ? `All (${allOrders.length})` : STATUS_LABEL[s]}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    const ordersHtml = filtered.length === 0
+      ? '<div class="empty">No orders.</div>'
+      : filtered.map(o => orderCardHtml(o)).join('');
+
+    body.innerHTML = filterHtml + ordersHtml;
+  }
+
+  function setFilter(f) {
+    currentFilter = f;
+    renderAdmin();
+  }
+
+  function orderCardHtml(o) {
+    const variety = varieties[o.variety_id];
+    const varietyName = variety ? variety.name : `Variety #${o.variety_id}`;
+    const choc = CHOCOLATE_NAMES[o.chocolate] || o.chocolate;
+    const fin = FINISH_NAMES[o.finish] || o.finish;
+    const total = (o.total_cents / 100).toFixed(2);
+    const next = STATUS_NEXT[o.status];
+
+    const actions = [];
+    if (next) {
+      actions.push(`<button class="action-btn primary" onclick="updateStatus(${o.id}, '${next}')">Mark ${STATUS_LABEL[next]}</button>`);
+    }
+    if (o.status !== 'cancelled' && o.status !== 'collected') {
+      actions.push(`<button class="action-btn danger" onclick="updateStatus(${o.id}, 'cancelled')">Cancel</button>`);
+    }
+
+    return `
+      <div class="order-card" id="order-${o.id}">
+        <div class="order-top">
+          <div>
+            <div class="order-id">#${o.id} · CA$${total}</div>
+            <div class="order-email">${o.customer_email}</div>
+          </div>
+          <div class="status-badge s-${o.status}">${STATUS_LABEL[o.status]}</div>
+        </div>
+        <div class="order-items">
+          <div class="order-variety">${varietyName}</div>
+          <div class="order-details">${choc} · ${fin} · ×${o.quantity}</div>
+          ${o.is_gift ? '<span class="gift-badge">Gift</span>' : ''}
+        </div>
+        <div class="order-meta">Slot #${o.time_slot_id}</div>
+        ${actions.length ? `<div class="action-row">${actions.join('')}</div>` : ''}
+      </div>
+    `;
+  }
+
+  async function updateStatus(id, status) {
+    const res = await fetch(`${BASE}/api/admin/orders/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ status }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      allOrders = allOrders.map(o => o.id === id ? updated : o);
+      renderAdmin();
+    }
+  }
+
+  // ── CHOCOLATIER ────────────────────────────────────
+
+  function renderChocolatier(rows) {
+    const body = document.getElementById('dash-body');
+    if (!rows.length) {
+      body.innerHTML = '<div class="empty">No paid orders for today.</div>';
+      return;
+    }
+
+    // Group by slot time
+    const groups = {};
+    rows.forEach(({ order: o, slot: s }) => {
+      const key = s.time;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push({ o, s });
+    });
+
+    const html = Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)).map(([time, items]) => `
+      <div class="slot-group">
+        <div class="slot-heading">${time}</div>
+        ${items.map(({ o }) => {
+          const choc = CHOCOLATE_NAMES[o.chocolate] || o.chocolate;
+          const fin = FINISH_NAMES[o.finish] || o.finish;
+          return `
+            <div class="order-card">
+              <div class="order-top">
+                <div>
+                  <div class="order-id">#${o.id}</div>
+                  <div class="order-email">${o.customer_email}</div>
+                </div>
+                <div class="order-details" style="text-align:right;font-size:13px;">×${o.quantity}</div>
+              </div>
+              <div class="order-items">
+                <div class="order-details">${choc} · ${fin}</div>
+                ${o.is_gift ? '<span class="gift-badge">Gift</span>' : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `).join('');
+
+    body.innerHTML = html;
+  }
+
+  // ── SUPPLIER ───────────────────────────────────────
+
+  function renderSupplier(items) {
+    const body = document.getElementById('dash-body');
+    if (!items.length) {
+      body.innerHTML = '<div class="empty">All varieties are well stocked.</div>';
+      return;
+    }
+
+    body.innerHTML = items.map(v => `
+      <div class="alert-card">
+        <div>
+          <div class="alert-name">${v.name}</div>
+          <div class="alert-farm">${[v.source_farm, v.source_location].filter(Boolean).join(', ') || '—'}</div>
+        </div>
+        <div style="text-align:center;">
+          <div class="stock-num">${v.stock_remaining}</div>
+          <div class="stock-label">remaining</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Enter key on PIN input
+  document.getElementById('pin-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitPin();
+  });
+</script>
+</body>
+</html>

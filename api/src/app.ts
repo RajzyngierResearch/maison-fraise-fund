@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import path from 'path';
 import varietiesRouter from './routes/varieties';
 import { locationsRouter, slotsRouter } from './routes/locations';
 import ordersRouter from './routes/orders';
@@ -31,5 +32,9 @@ app.use('/api/chocolatier', chocolatierRouter);
 app.use('/api/supplier', supplierRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+app.get('/operator', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/operator.html'));
+});
 
 export default app;
