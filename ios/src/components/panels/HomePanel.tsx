@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, ScrollView,
-  StyleSheet, ActivityIndicator,
+  StyleSheet, ActivityIndicator, Keyboard,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -23,6 +23,8 @@ export default function HomePanel() {
   const c = useColors();
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     fetchVarieties()
@@ -36,13 +38,22 @@ export default function HomePanel() {
       .catch(() => {})
       .finally(() => setLoading(false));
 
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(cursorAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
-        Animated.timing(cursorAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-      ])
-    ).start();
+    const hide = Keyboard.addListener('keyboardWillHide', () => {
+      TrueSheet.present('main-sheet', 1);
+      setFocused(false);
+    });
+    return () => hide.remove();
   }, []);
+
+  const handleFocus = () => {
+    setFocused(true);
+    TrueSheet.present('main-sheet', 2);
+  };
+
+  const handleCancel = () => {
+    setQuery('');
+    Keyboard.dismiss();
+  };
 
   const handleVarietyPress = (v: Variety) => {
     setOrder({ variety_id: v.id, variety_name: v.name, price_cents: v.price_cents });
@@ -55,41 +66,54 @@ export default function HomePanel() {
       {/* Top row */}
       <View style={styles.topRow}>
         <Text style={[styles.wordmark, { color: c.text }]}>maison fraise</Text>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile')}
-          activeOpacity={0.7}
-          style={[styles.profileBtn, { borderColor: c.border }]}
-        >
-          <Text style={[styles.profileIcon, { color: c.muted }]}>⊙</Text>
-        </TouchableOpacity>
+        {!focused && (
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Profile')}
+            activeOpacity={0.7}
+            style={[styles.profileBtn, { borderColor: c.border }]}
+          >
+            <Text style={[styles.profileIcon, { color: c.muted }]}>⊙</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Search bar */}
-      <TextInput
-        style={[styles.searchBar, { backgroundColor: c.searchBg, borderColor: c.searchBorder, color: c.text }]}
-        placeholder="Ask about today's strawberries…"
-        placeholderTextColor={c.muted}
-        value={query}
-        onChangeText={setQuery}
-        onFocus={() => TrueSheet.present('main-sheet', 2)}
-        returnKeyType="search"
-      />
+      {/* Search bar + cancel */}
+      <View style={styles.searchRow}>
+        <TextInput
+          ref={inputRef}
+          style={[styles.searchBar, { backgroundColor: c.searchBg, borderColor: c.searchBorder, color: c.text, flex: 1 }]}
+          placeholder="Ask about today's strawberries…"
+          placeholderTextColor={c.muted}
+          value={query}
+          onChangeText={setQuery}
+          onFocus={handleFocus}
+          returnKeyType="done"
+          onSubmitEditing={() => Keyboard.dismiss()}
+        />
+        {focused && (
+          <TouchableOpacity onPress={handleCancel} activeOpacity={0.7} style={styles.cancelBtn}>
+            <Text style={[styles.cancelText, { color: c.accent }]}>Cancel</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Shortcut pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
-        {SHORTCUTS.map(s => (
-          <TouchableOpacity
-            key={s}
-            style={[styles.pill, { backgroundColor: c.pillBg, borderColor: c.pillBorder }]}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.pillText, { color: c.text }]}>{s}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {!focused && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow}>
+          {SHORTCUTS.map(s => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.pill, { backgroundColor: c.pillBg, borderColor: c.pillBorder }]}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.pillText, { color: c.text }]}>{s}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Location header */}
-      {activeLocation && (
+      {activeLocation && !focused && (
         <View style={styles.locationHeader}>
           <Text style={[styles.locationTypeLabel, { color: c.muted }]}>COLLECTION POINT</Text>
           <Text style={[styles.locationName, { color: c.text }]}>{activeLocation.name}</Text>
@@ -98,7 +122,11 @@ export default function HomePanel() {
       )}
 
       {/* Variety list */}
-      <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.list}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {loading ? (
           <ActivityIndicator color={c.accent} style={{ marginTop: 24 }} />
         ) : varieties.length === 0 ? (
@@ -149,9 +177,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profileIcon: { fontSize: 18 },
-  searchBar: {
-    marginHorizontal: SPACING.md,
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
     marginBottom: 8,
+    gap: 8,
+  },
+  searchBar: {
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 11,
@@ -159,6 +192,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.dmSans,
   },
+  cancelBtn: { paddingVertical: 6 },
+  cancelText: { fontSize: 15, fontFamily: fonts.dmSans },
   pillRow: { paddingHorizontal: SPACING.md, paddingBottom: 8, gap: 8 },
   pill: {
     borderRadius: 20,
