@@ -3,16 +3,22 @@ import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Animated, ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { usePanel, Variety } from '../../context/PanelContext';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { fetchVarieties } from '../../lib/api';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
 import { STRAWBERRIES } from '../../data/seed';
+import { RootStackParamList } from '../../types';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const SHORTCUTS = ['Order again', 'Ready now', 'Gift'];
 
 export default function HomePanel() {
+  const navigation = useNavigation<Nav>();
   const { showPanel, varieties, setVarieties, setOrder, activeLocation } = usePanel();
   const c = useColors();
   const [loading, setLoading] = useState(true);
@@ -46,6 +52,14 @@ export default function HomePanel() {
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
+      {/* Top row: wordmark + profile */}
+      <View style={styles.topRow}>
+        <Text style={[styles.wordmark, { color: c.text }]}>maison fraise</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Profile')} activeOpacity={0.7} style={[styles.profileBtn, { borderColor: c.border }]}>
+          <Text style={[styles.profileIcon, { color: c.muted }]}>⊙</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Search bar */}
       <TouchableOpacity
         style={[styles.searchBar, { backgroundColor: c.searchBg, borderColor: c.searchBorder }]}
@@ -110,7 +124,31 @@ export default function HomePanel() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 8 },
+  container: { flex: 1 },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  wordmark: {
+    fontSize: 16,
+    fontFamily: fonts.playfairItalic,
+    letterSpacing: 0.5,
+  },
+  profileBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileIcon: {
+    fontSize: 18,
+  },
   searchBar: {
     marginHorizontal: SPACING.md,
     marginBottom: 10,
