@@ -14,7 +14,7 @@ import NFCPanel from './panels/NFCPanel';
 import VerifiedPanel from './panels/VerifiedPanel';
 import StandingOrderPanel from './panels/StandingOrderPanel';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
@@ -36,14 +36,16 @@ export default function PanelNavigator() {
 
   const prevPanel = stack.length >= 2 ? stack[stack.length - 2] : null;
 
+  // New panel slides up from below; going back it drops back down
   const currentTranslate = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, SCREEN_WIDTH],
+    outputRange: [0, SCREEN_HEIGHT],
   });
 
+  // Previous panel drifts very slightly upward during transition (subtle depth cue)
   const prevTranslate = slideAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-SCREEN_WIDTH * 0.3, 0],
+    outputRange: [-16, 0],
   });
 
   const CurrentComponent = PANELS[currentPanel] ?? HomePanel;
@@ -53,12 +55,11 @@ export default function PanelNavigator() {
     <View style={styles.container}>
       {/* Previous panel sits behind, absolutely positioned for parallax */}
       {PrevComponent && (
-        <Animated.View style={[styles.prev, { transform: [{ translateX: prevTranslate }] }]}>
+        <Animated.View style={[styles.prev, { transform: [{ translateY: prevTranslate }] }]}>
           <PrevComponent />
         </Animated.View>
       )}
-      {/* Current panel fills the container with flex: 1 so TrueSheet gives it height */}
-      <Animated.View style={[styles.current, { transform: [{ translateX: currentTranslate }] }]}>
+      <Animated.View style={[styles.current, { transform: [{ translateY: currentTranslate }] }]}>
         <CurrentComponent />
       </Animated.View>
     </View>
