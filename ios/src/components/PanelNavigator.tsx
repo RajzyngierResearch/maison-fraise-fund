@@ -51,12 +51,14 @@ export default function PanelNavigator() {
 
   return (
     <View style={styles.container}>
+      {/* Previous panel sits behind, absolutely positioned for parallax */}
       {PrevComponent && (
-        <Animated.View style={[styles.panel, { transform: [{ translateX: prevTranslate }] }]}>
+        <Animated.View style={[styles.prev, { transform: [{ translateX: prevTranslate }] }]}>
           <PrevComponent />
         </Animated.View>
       )}
-      <Animated.View style={[styles.panel, { transform: [{ translateX: currentTranslate }] }]}>
+      {/* Current panel fills the container with flex: 1 so TrueSheet gives it height */}
+      <Animated.View style={[styles.current, { transform: [{ translateX: currentTranslate }] }]}>
         <CurrentComponent />
       </Animated.View>
     </View>
@@ -68,7 +70,11 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: 'hidden',
   },
-  panel: {
+  current: {
+    flex: 1,
+  },
+  prev: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: -1,
   },
 });
