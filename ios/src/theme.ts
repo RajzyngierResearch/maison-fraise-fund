@@ -23,3 +23,27 @@ export const SPACING = {
   lg: 24,
   xl: 32,
 };
+
+// New unified color tokens used by panel components
+export const colors = {
+  green: '#1C3A2A',
+  cream: '#E8E0D0',
+  card: '#EDE6D8',
+  text: '#1a1a1a',
+  muted: '#888880',
+  gold: '#C4973A',
+  border: '#D0C8B8',
+  terminal: '#000000',
+  terminalText: '#FFFFFF',
+  terminalClaude: '#F5A623',
+};
+
+// Font family references (must be loaded in App.tsx)
+export const fonts = {
+  playfair: 'PlayfairDisplay_700Bold',
+  playfairRegular: 'PlayfairDisplay_400Regular',
+  playfairItalic: 'PlayfairDisplay_400Regular_Italic',
+  dmSans: 'DMSans_400Regular',
+  dmSansMedium: 'DMSans_500Medium',
+  dmMono: 'DMMono_400Regular',
+};

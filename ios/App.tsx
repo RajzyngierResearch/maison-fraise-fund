@@ -12,6 +12,8 @@ import {
   PlayfairDisplay_400Regular_Italic,
   PlayfairDisplay_700Bold,
 } from '@expo-google-fonts/playfair-display';
+import { DMSans_400Regular, DMSans_500Medium } from '@expo-google-fonts/dm-sans';
+import { DMMono_400Regular } from '@expo-google-fonts/dm-mono';
 import { OrderProvider } from './src/context/OrderContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { COLORS } from './src/theme';
@@ -51,6 +53,9 @@ export default function App() {
     PlayfairDisplay_400Regular,
     PlayfairDisplay_400Regular_Italic,
     PlayfairDisplay_700Bold,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMMono_400Regular,
   });
 
   useEffect(() => {

@@ -130,6 +130,27 @@ export async function createOrder(body: {
   return res.json() as Promise<{ order: { id: number }; client_secret: string }>;
 }
 
+export async function askClaude(
+  query: string,
+  varieties: Array<{ id: number; name: string; price_cents: number; stock_remaining: number }>,
+  businesses: Array<{ id: number; name: string; address: string; type: string }>,
+): Promise<{ response: string; action: { type: string | null; variety_id: number | null; chocolate: string | null; finish: string | null; quantity: number | null } }> {
+  const res = await fetch(`${BASE_URL}/api/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      context: {
+        available_varieties: varieties,
+        businesses,
+        user_order_history: [],
+      },
+    }),
+  });
+  if (!res.ok) throw new Error('Ask failed');
+  return res.json();
+}
+
 export async function confirmOrder(orderId: number) {
   const res = await fetch(`${BASE_URL}/api/orders/${orderId}/confirm`, {
     method: 'POST',
