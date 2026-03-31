@@ -16,7 +16,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.maisonfraise.app",
       "entitlements": {
-        "com.apple.developer.nfc.readersession.formats": ["NDEF", "TAG"]
+        "com.apple.developer.nfc.readersession.formats": ["TAG"]
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
