@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { eq, isNull } from 'drizzle-orm';
+import { eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations } from '../db/schema';
 import { logger } from '../lib/logger';
@@ -324,6 +324,19 @@ router.patch('/users/:id/photographed', async (req: Request, res: Response) => {
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/migrate — add missing columns to orders table
+router.post('/migrate', async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS nfc_token text UNIQUE`);
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS nfc_token_used boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS nfc_verified_at timestamp`);
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS push_token text`);
+    res.json({ ok: true, message: 'Migration complete' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 
