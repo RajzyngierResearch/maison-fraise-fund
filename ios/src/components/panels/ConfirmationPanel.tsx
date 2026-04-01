@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../../context/PanelContext';
@@ -8,8 +8,6 @@ import { SPACING } from '../../theme';
 export default function ConfirmationPanel() {
   const { goHome, showPanel, order } = usePanel();
   const c = useColors();
-
-  useEffect(() => { TrueSheet.present('main-sheet', 2); }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>

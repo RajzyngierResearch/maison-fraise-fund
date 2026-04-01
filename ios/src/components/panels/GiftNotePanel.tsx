@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../../context/PanelContext';
 import { generateGiftNote } from '../../lib/api';
 import { useColors, fonts } from '../../theme';
@@ -16,8 +15,6 @@ export default function GiftNotePanel() {
   const [tone, setTone] = useState<'warm' | 'funny' | 'poetic' | 'minimal'>('warm');
   const [note, setNote] = useState(order.gift_note ?? '');
   const [generating, setGenerating] = useState(false);
-
-  useEffect(() => { TrueSheet.present('main-sheet', 2); }, []);
 
   const handleGenerate = async () => {
     setGenerating(true);

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../../context/PanelContext';
 import { fetchSlots } from '../../lib/api';
 import { getDateOptions } from '../../data/seed';
@@ -27,8 +26,6 @@ export default function WhenPanel() {
         return slotTime > new Date();
       })
     : slots;
-
-  useEffect(() => { TrueSheet.present('main-sheet', 2); }, []);
 
   useEffect(() => {
     if (!order.location_id || !order.date) return;

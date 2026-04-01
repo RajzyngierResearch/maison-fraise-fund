@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../../context/PanelContext';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
@@ -20,8 +19,6 @@ export default function QuantityPanel() {
   const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState<number>(order.quantity ?? 4);
   const [isGift, setIsGift] = useState(order.is_gift);
-
-  useEffect(() => { TrueSheet.present('main-sheet', 2); }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>

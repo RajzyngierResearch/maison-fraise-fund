@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Dimensions } from 'react-native';
+import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../context/PanelContext';
 import HomePanel from './panels/HomePanel';
 import AskPanel from './panels/AskPanel';
@@ -37,9 +38,24 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   standingOrder: StandingOrderPanel,
 };
 
+// Panels that should always expand the sheet to full height
+const FULL_HEIGHT_PANELS = new Set([
+  'variety', 'chocolate', 'finish', 'quantity', 'gift-note', 'when', 'review', 'confirmation', 'nfc', 'verified', 'standingOrder', 'ask',
+]);
+
 export default function PanelNavigator() {
   const { currentPanel, slideAnim } = usePanel();
   const CurrentComponent = PANELS[currentPanel] ?? HomePanel;
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (FULL_HEIGHT_PANELS.has(currentPanel)) {
+      // Delay slightly so the panel slide animation (320ms) doesn't conflict
+      timerRef.current = setTimeout(() => TrueSheet.present('main-sheet', 2), 350);
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [currentPanel]);
 
   return (
     <Animated.View style={[styles.container, {

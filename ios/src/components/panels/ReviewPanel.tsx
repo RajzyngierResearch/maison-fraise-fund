@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
@@ -109,8 +109,6 @@ export default function ReviewPanel() {
     }
   };
 
-  useEffect(() => { TrueSheet.present('main-sheet', 2); }, []);
-
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
       <View style={[styles.header, { borderBottomColor: c.border }]}>
@@ -121,7 +119,7 @@ export default function ReviewPanel() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
           <Row label="STRAWBERRY" value={order.variety_name ?? '—'} c={c} />
           <View style={[styles.divider, { backgroundColor: c.border }]} />

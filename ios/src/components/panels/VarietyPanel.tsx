@@ -1,7 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../../context/PanelContext';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
@@ -11,8 +10,6 @@ export default function VarietyPanel() {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const variety = varieties.find(v => v.id === order.variety_id);
-
-  useEffect(() => { TrueSheet.present('main-sheet', 2); }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
