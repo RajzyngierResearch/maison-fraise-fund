@@ -188,7 +188,7 @@ router.post('/:id/confirm', async (req: Request, res: Response) => {
     res.json({ ...updated, nfc_token, user_db_id: dbUserId });
   } catch (err) {
     logger.error('Order confirm error', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', detail: String(err) });
   }
 });
 
