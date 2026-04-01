@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,7 +16,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.maisonfraise.app",
       "entitlements": {
-        "com.apple.developer.in-app-payments": ["merchant.com.maisonfraise.app"]
+        "com.apple.developer.in-app-payments": ["merchant.com.maisonfraise.app"],
+        "com.apple.developer.nfc.readersession.formats": ["NDEF"]
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -42,6 +43,7 @@
       "expo-font",
       "expo-apple-authentication",
       "expo-notifications",
+      "react-native-nfc-manager",
       [
         "expo-location",
         {
