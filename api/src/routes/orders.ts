@@ -26,6 +26,7 @@ router.post('/', async (req: Request, res: Response) => {
     is_gift,
     customer_email,
     push_token,
+    gift_note,
   } = req.body;
 
   if (!variety_id || !location_id || !time_slot_id || !chocolate || !finish || !quantity || !customer_email) {
@@ -98,13 +99,14 @@ router.post('/', async (req: Request, res: Response) => {
         status: 'pending',
         customer_email,
         push_token: push_token ?? null,
+        gift_note: gift_note ?? null,
       })
       .returning();
 
     res.status(201).json({ order, client_secret: clientSecret });
   } catch (err) {
     logger.error('Order creation error', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', detail: String(err) });
   }
 });
 
@@ -204,13 +206,17 @@ router.get('/', async (req: Request, res: Response) => {
     const rows = await db
       .select({
         id: orders.id,
+        variety_id: orders.variety_id,
         variety_name: varieties.name,
+        price_cents: varieties.price_cents,
+        location_id: orders.location_id,
         chocolate: orders.chocolate,
         finish: orders.finish,
         quantity: orders.quantity,
         is_gift: orders.is_gift,
         total_cents: orders.total_cents,
         status: orders.status,
+        gift_note: orders.gift_note,
         slot_date: timeSlots.date,
         slot_time: timeSlots.time,
         created_at: orders.created_at,
