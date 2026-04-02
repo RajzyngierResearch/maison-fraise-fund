@@ -124,6 +124,9 @@ export const orders = pgTable('orders', {
   nfc_token_used: boolean('nfc_token_used').notNull().default(false),
   nfc_verified_at: timestamp('nfc_verified_at'),
   payment_intent_id: text('payment_intent_id'),
+  rating: integer('rating'),
+  rating_note: text('rating_note'),
+  discount_applied: boolean('discount_applied').notNull().default(false),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -139,6 +142,8 @@ export const users = pgTable('users', {
   is_dj: boolean('is_dj').notNull().default(false),
   photographed: boolean('photographed').notNull().default(false),
   campaign_interest: boolean('campaign_interest').notNull().default(false),
+  stripe_customer_id: text('stripe_customer_id'),
+  referred_by_code: text('referred_by_code'),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -353,5 +358,13 @@ export const notifications = pgTable('notifications', {
   body: text('body').notNull(),
   read: boolean('read').notNull().default(false),
   data: jsonb('data').$type<Record<string, any>>().notNull().default({}),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const referralCodes = pgTable('referral_codes', {
+  id: serial('id').primaryKey(),
+  user_id: integer('user_id').notNull().references(() => users.id),
+  code: text('code').notNull().unique(),
+  uses: integer('uses').notNull().default(0),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });

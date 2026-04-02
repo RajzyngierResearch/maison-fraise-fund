@@ -134,7 +134,7 @@ router.patch('/orders/:id/status', async (req: Request, res: Response) => {
         sendPushNotification(pushToken, {
           title: 'Your order is ready.',
           body: 'Your order is ready for pickup.',
-          data: { order_id: updated.id },
+          data: { screen: 'order-history', order_id: updated.id },
         }).catch((err: unknown) => logger.error('Push notification failed', err));
       }
 
@@ -794,6 +794,16 @@ router.post('/migrate', async (_req: Request, res: Response) => {
     await db.execute(sql`ALTER TABLE varieties ADD COLUMN IF NOT EXISTS image_url TEXT`);
     await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_intent_id TEXT`);
 
+    // Referral system
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS referral_codes (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), code TEXT NOT NULL UNIQUE, uses INTEGER NOT NULL DEFAULT 0, created_at TIMESTAMP NOT NULL DEFAULT NOW())`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by_code TEXT`);
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_applied BOOLEAN NOT NULL DEFAULT FALSE`);
+
+    // Stripe customer ID + order ratings
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT`);
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS rating INTEGER`);
+    await db.execute(sql`ALTER TABLE orders ADD COLUMN IF NOT EXISTS rating_note TEXT`);
+
     res.json({ ok: true, message: 'Migration complete' });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -892,7 +902,7 @@ router.post('/contracts', async (req: Request, res: Response) => {
       sendPushNotification(user.push_token, {
         title: 'Maison Fraise is placing you.',
         body: `You've been offered a placement at ${business.name}. Open the app to review.`,
-        data: { screen: 'contract_offer', contract_id: contract.id },
+        data: { screen: 'contract-offer', contract_id: contract.id },
       }).catch(() => {});
     }
 

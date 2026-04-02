@@ -3,10 +3,11 @@ import { eq, sql, and, desc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import crypto from 'crypto';
 import { db } from '../db';
-import { orders, varieties, timeSlots, legitimacyEvents, users } from '../db/schema';
+import { orders, varieties, timeSlots, legitimacyEvents, users, referralCodes } from '../db/schema';
 import { stripe } from '../lib/stripe';
 import { sendOrderConfirmation } from '../lib/resend';
 import { logger } from '../lib/logger';
+import { requireUser } from '../lib/auth';
 
 const router = Router();
 
@@ -227,7 +228,28 @@ router.post('/payment-intent', async (req: Request, res: Response) => {
       return;
     }
 
-    const total_cents = variety.price_cents * quantity;
+    let total_cents = variety.price_cents * quantity;
+
+    // Referral discount: apply 10% if user has a referral code and no prior discount applied
+    let discount_applied = false;
+    const [userRow] = await db
+      .select({ referred_by_code: users.referred_by_code })
+      .from(users)
+      .where(eq(users.email, customer_email));
+
+    if (userRow?.referred_by_code) {
+      // Check if any of their previous orders already had a discount applied
+      const discountedOrders = await db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(and(eq(orders.customer_email, customer_email), eq(orders.discount_applied, true)))
+        .limit(1);
+
+      if (discountedOrders.length === 0) {
+        total_cents = Math.round(total_cents * 0.9);
+        discount_applied = true;
+      }
+    }
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: total_cents,
@@ -242,10 +264,11 @@ router.post('/payment-intent', async (req: Request, res: Response) => {
         is_gift: String(is_gift ?? false),
         gift_note: gift_note ?? '',
         customer_email: String(customer_email),
+        discount_applied: String(discount_applied),
       },
     });
 
-    res.status(201).json({ client_secret: paymentIntent.client_secret, total_cents });
+    res.status(201).json({ client_secret: paymentIntent.client_secret, total_cents, discount_applied });
   } catch (err) {
     logger.error('Payment intent creation error', err);
     res.status(500).json({ error: 'Internal server error', detail: String(err) });
@@ -330,6 +353,41 @@ router.get('/', async (req: Request, res: Response) => {
       .orderBy(orders.created_at);
     res.json(rows);
   } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/orders/:id/rate — rate a collected order (1-5 stars)
+router.post('/:id/rate', requireUser, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid order id' }); return; }
+
+  const user_id = (req as any).userId as number;
+  const { rating, note } = req.body;
+
+  if (!rating || typeof rating !== 'number' || rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+    res.status(400).json({ error: 'rating must be an integer between 1 and 5' });
+    return;
+  }
+
+  try {
+    const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, user_id));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    if (!order) { res.status(404).json({ error: 'Order not found' }); return; }
+    if (order.customer_email !== user.email) { res.status(403).json({ error: 'Forbidden' }); return; }
+    if (order.status !== 'collected') { res.status(400).json({ error: 'Order must be collected before rating' }); return; }
+
+    const [updated] = await db
+      .update(orders)
+      .set({ rating, rating_note: note ?? null })
+      .where(eq(orders.id, id))
+      .returning();
+
+    res.json(updated);
+  } catch (err) {
+    logger.error('Order rating error', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

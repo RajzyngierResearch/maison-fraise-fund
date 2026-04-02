@@ -713,6 +713,28 @@ export async function verifyAppleSignIn(params: {
   return r.json();
 }
 
+export async function rateOrder(orderId: number, rating: number, note?: string): Promise<void> {
+  const headers = await authHeader();
+  await fetch(`${BASE_URL}/api/orders/${orderId}/rate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ rating, note }),
+  });
+}
+
+export async function demoLogin(): Promise<{ user_id: number; token: string }> {
+  const r = await fetch(`${BASE_URL}/api/auth/demo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.EXPO_PUBLIC_DEMO_EMAIL ?? 'demo@maison-fraise.com',
+      password: process.env.EXPO_PUBLIC_DEMO_PASSWORD ?? 'demo1234',
+    }),
+  });
+  if (!r.ok) throw new Error('demo_unavailable');
+  return r.json();
+}
+
 export async function createCampaignCommissionIntent(params: {
   amount_cents: number;
   campaign_name: string;

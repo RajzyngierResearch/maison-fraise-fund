@@ -101,6 +101,16 @@ export default function App() {
       if (screen === 'activity-feed') {
         setPendingScreen('activity-feed');
       }
+      if (screen === 'order-history') {
+        setPendingScreen('order-history');
+      }
+      if (screen === 'popup-detail') {
+        const popupId = response.notification.request.content.data?.popupId;
+        if (popupId) { setPendingData({ popup_id: popupId }); setPendingScreen('popup-detail'); }
+      }
+      if (screen === 'profile') {
+        setPendingScreen('profile');
+      }
     });
     return () => sub.remove();
   }, []);

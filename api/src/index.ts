@@ -1,4 +1,18 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
+Sentry.init({
+  dsn: process.env.SENTRY_DSN ?? '',
+  tracesSampleRate: 0.2,
+  environment: process.env.NODE_ENV ?? 'production',
+});
+
+const REQUIRED_ENV = ['DATABASE_URL', 'STRIPE_SECRET_KEY', 'JWT_SECRET'];
+const missing = REQUIRED_ENV.filter(k => !process.env[k]);
+if (missing.length > 0) {
+  console.error(`[startup] Missing required environment variables: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
 import cron from 'node-cron';
 import { and, eq, lte, gte, sql } from 'drizzle-orm';
 import app from './app';
@@ -8,6 +22,7 @@ import { seed } from './db/seed';
 import { logger } from './lib/logger';
 import { sendPushNotification } from './lib/push';
 import { sendDailySummary } from './lib/resend';
+import { stripe } from './lib/stripe';
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
@@ -52,11 +67,13 @@ cron.schedule('0 8 * * *', async () => {
           continue;
         }
 
-        // Get sender email
-        const [sender] = await db.select({ email: users.email }).from(users).where(eq(users.id, so.sender_id));
+        // Get sender info
+        const [sender] = await db.select({ email: users.email, push_token: users.push_token, stripe_customer_id: users.stripe_customer_id }).from(users).where(eq(users.id, so.sender_id));
         if (!sender) continue;
 
-        await db.insert(orders).values({
+        const totalCents = priceCents * so.quantity;
+
+        const [newOrder] = await db.insert(orders).values({
           variety_id: so.variety_id,
           location_id: so.location_id,
           time_slot_id: slot.id,
@@ -64,18 +81,48 @@ cron.schedule('0 8 * * *', async () => {
           finish: so.finish,
           quantity: so.quantity,
           is_gift: so.recipient_id != null,
-          total_cents: priceCents * so.quantity,
+          total_cents: totalCents,
           status: 'pending',
           customer_email: sender.email,
-        });
+        }).returning();
+
+        // Attempt Stripe off-session charge if customer has a saved payment method
+        if (sender.stripe_customer_id) {
+          try {
+            const customer = await stripe.customers.retrieve(sender.stripe_customer_id) as import('stripe').Stripe.Customer;
+            const defaultPm = customer.invoice_settings?.default_payment_method;
+            if (defaultPm) {
+              const pi = await stripe.paymentIntents.create({
+                amount: totalCents,
+                currency: 'cad',
+                customer: sender.stripe_customer_id,
+                payment_method: typeof defaultPm === 'string' ? defaultPm : defaultPm.id,
+                confirm: true,
+                off_session: true,
+                metadata: { type: 'standing_order', order_id: String(newOrder.id) },
+              });
+              if (pi.status === 'succeeded') {
+                await db.update(orders).set({ status: 'paid', stripe_payment_intent_id: pi.id }).where(eq(orders.id, newOrder.id));
+              }
+            }
+          } catch (payErr) {
+            logger.error(`[cron] Stripe charge failed for standing order ${so.id}`, payErr);
+            if (sender.push_token) {
+              sendPushNotification(sender.push_token, {
+                title: 'Payment failed',
+                body: 'Payment failed for your standing order. Please update your payment method.',
+                data: { screen: 'order-history' },
+              }).catch((e: unknown) => logger.error('[cron] Push notification error', e));
+            }
+          }
+        }
 
         // Send push notification if sender has a token
-        const [senderFull] = await db.select({ push_token: users.push_token }).from(users).where(eq(users.id, so.sender_id));
-        if (senderFull?.push_token) {
-          sendPushNotification(senderFull.push_token, {
+        if (sender.push_token) {
+          sendPushNotification(sender.push_token, {
             title: 'Standing order queued',
             body: 'Your standing order has been queued for today.',
-            data: { screen: 'orders' },
+            data: { screen: 'order-history' },
           }).catch((e: unknown) => logger.error('[cron] Push notification error', e));
         }
       } catch (soErr) {

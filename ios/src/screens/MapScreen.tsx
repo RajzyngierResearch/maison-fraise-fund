@@ -207,6 +207,25 @@ export default function MapScreen() {
       jumpToPanel('activity-feed');
       setTimeout(() => TrueSheet.present(SHEET_NAME, 2), 350);
     }
+    if (pendingScreen === 'order-history') {
+      clearPendingScreen();
+      showPanel('order-history');
+      setTimeout(() => TrueSheet.present(SHEET_NAME, 2), 350);
+    }
+    if (pendingScreen === 'popup-detail' && pendingData?.popup_id) {
+      const popupBiz = businesses.find(b => b.id === pendingData.popup_id);
+      clearPendingScreen();
+      if (popupBiz) {
+        setActiveLocation(popupBiz);
+        showPanel('popup-detail');
+        setTimeout(() => TrueSheet.present(SHEET_NAME, 2), 350);
+      }
+    }
+    if (pendingScreen === 'profile') {
+      clearPendingScreen();
+      jumpToPanel('profile');
+      setTimeout(() => TrueSheet.present(SHEET_NAME, 1), 350);
+    }
   }, [pendingScreen, businesses]);
 
   const loadBusinesses = () => {

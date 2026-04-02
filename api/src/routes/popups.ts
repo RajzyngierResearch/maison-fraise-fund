@@ -169,7 +169,7 @@ router.delete('/:id/rsvp', async (req: Request, res: Response) => {
             sendPushNotification(promotedUser.push_token, {
               title: 'A spot just opened up.',
               body: `You're off the waitlist for ${popup?.name ?? 'the popup'}. ${fee > 0 ? 'Open the app to complete your RSVP.' : 'You\'re confirmed!'}`,
-              data: { screen: 'popup-detail', popup_id },
+              data: { screen: 'popup-detail', popupId: popup_id },
             }).catch(() => {});
           }
         }
@@ -374,7 +374,7 @@ router.post('/:id/nominations', async (req: Request, res: Response) => {
       sendPushNotification(nominee.push_token, {
         title: 'Maison Fraise',
         body: `You've been nominated at tonight's popup, ${name}.`,
-        data: { screen: 'nominate', popup_id },
+        data: { screen: 'nomination-history', popup_id },
       }).catch(() => {});
     }
 

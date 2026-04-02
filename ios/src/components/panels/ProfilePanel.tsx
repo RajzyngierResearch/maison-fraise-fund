@@ -14,6 +14,7 @@ import {
   fetchUserPopupRsvps, fetchDjGigs, fetchDjAllocations, registerAsDj,
   fetchHostedPopups, fetchActiveContract, fetchFollowerCount, logMemberVisit,
   fetchLegitimacyBreakdown, updateDisplayName, cancelPopupRsvp, fetchAuthToken,
+  demoLogin,
 } from '../../lib/api';
 import { CHOCOLATES, FINISHES } from '../../data/seed';
 import { useColors, fonts } from '../../theme';
@@ -143,6 +144,25 @@ export default function ProfilePanel() {
       if (err.code !== 'ERR_REQUEST_CANCELED') {
         Alert.alert('Sign in failed. Please try again.');
       }
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const handleDemoLogin = async () => {
+    setSigningIn(true);
+    try {
+      const result = await demoLogin();
+      await AsyncStorage.setItem('user_db_id', String(result.user_id));
+      await setAuthToken(result.token);
+      setUserDbId(result.user_id);
+      fetchStandingOrders(result.user_id).then(setStandingOrders).catch(() => {});
+      if (pushToken) {
+        const { updatePushToken } = await import('../../lib/api');
+        updatePushToken(result.user_id, pushToken).catch(() => {});
+      }
+    } catch (err: any) {
+      Alert.alert('Demo unavailable', 'The demo account is not available right now.');
     } finally {
       setSigningIn(false);
     }
@@ -329,13 +349,18 @@ export default function ProfilePanel() {
             </>
           ) : !loading && appleAvailable ? (
             signingIn ? <ActivityIndicator color={c.accent} /> : (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={14}
-                style={styles.appleBtn}
-                onPress={handleAppleSignIn}
-              />
+              <View style={styles.signInStack}>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={14}
+                  style={styles.appleBtn}
+                  onPress={handleAppleSignIn}
+                />
+                <TouchableOpacity onPress={handleDemoLogin} activeOpacity={0.6} style={styles.demoBtn}>
+                  <Text style={[styles.demoBtnText, { color: c.muted }]}>Use demo account</Text>
+                </TouchableOpacity>
+              </View>
             )
           ) : null}
         </View>
@@ -760,6 +785,9 @@ const styles = StyleSheet.create({
   signOutBtn: { paddingVertical: 4, paddingHorizontal: 4 },
   signOutText: { fontSize: 13, fontFamily: fonts.dmSans },
   appleBtn: { height: 44 },
+  signInStack: { gap: 8, alignItems: 'center' },
+  demoBtn: { paddingVertical: 4, paddingHorizontal: 8 },
+  demoBtnText: { fontSize: 11, fontFamily: fonts.dmMono, letterSpacing: 0.5 },
   body: { padding: SPACING.md, gap: 12 },
 
   sectionLabel: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1.5, marginBottom: 6 },

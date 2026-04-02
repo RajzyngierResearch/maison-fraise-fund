@@ -90,6 +90,24 @@ router.post('/token', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/auth/demo — demo login for Apple reviewers
+router.post('/demo', async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+  const demoEmail = process.env.DEMO_EMAIL;
+  const demoPassword = process.env.DEMO_PASSWORD;
+  if (!demoEmail || !demoPassword) { res.status(404).json({ error: 'not_available' }); return; }
+  if (email !== demoEmail || password !== demoPassword) { res.status(401).json({ error: 'invalid_credentials' }); return; }
+  try {
+    let [user] = await db.select().from(users).where(eq(users.email, demoEmail));
+    if (!user) {
+      [user] = await db.insert(users).values({ email: demoEmail, display_name: 'Demo User', verified: true }).returning();
+    }
+    res.json({ user_id: user.id, token: signToken(user.id), is_new: false });
+  } catch (e) {
+    res.status(500).json({ error: 'internal' });
+  }
+});
+
 // PATCH /api/auth/push-token — update push token for an existing user
 router.patch('/push-token', async (req: Request, res: Response) => {
   const { user_id, push_token } = req.body;

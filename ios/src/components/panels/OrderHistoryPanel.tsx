@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePanel } from '../../context/PanelContext';
-import { fetchOrderHistory } from '../../lib/api';
+import { fetchOrderHistory, rateOrder } from '../../lib/api';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
 
@@ -27,6 +27,7 @@ export default function OrderHistoryPanel() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [pendingRating, setPendingRating] = useState<Record<number, number>>({});
   const userDbIdRef = useRef<number | null>(null);
 
   const loadPage = (userId: number, pageOffset: number, append: boolean) => {
@@ -55,6 +56,16 @@ export default function OrderHistoryPanel() {
     const nextOffset = offset + 20;
     setOffset(nextOffset);
     loadPage(userDbIdRef.current, nextOffset, true);
+  };
+
+  const handleRate = async (orderId: number, stars: number) => {
+    setPendingRating(prev => ({ ...prev, [orderId]: stars }));
+    try {
+      await rateOrder(orderId, stars);
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, rating: stars } : o));
+    } catch {
+      // keep optimistic state, silently fail
+    }
   };
 
   const readyOrders = orders.filter(o => o.status === 'ready');
@@ -104,6 +115,37 @@ export default function OrderHistoryPanel() {
                       <Text style={[styles.status, { color: sColor }]}>{o.status}</Text>
                     </View>
                   </View>
+                  {o.status === 'collected' && !o.rating && (
+                    <View style={styles.starsRow}>
+                      {[1, 2, 3, 4, 5].map(star => {
+                        const filled = (pendingRating[o.id] ?? 0) >= star;
+                        return (
+                          <TouchableOpacity
+                            key={star}
+                            onPress={() => handleRate(o.id, star)}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                          >
+                            <Text style={[styles.star, { color: filled ? '#FFD700' : '#444' }]}>
+                              {filled ? '★' : '☆'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {o.status === 'collected' && (o.rating || pendingRating[o.id]) && (
+                    <View style={styles.starsRow}>
+                      {[1, 2, 3, 4, 5].map(star => {
+                        const filled = (pendingRating[o.id] ?? o.rating ?? 0) >= star;
+                        return (
+                          <Text key={star} style={[styles.star, { color: filled ? '#FFD700' : '#444' }]}>
+                            {filled ? '★' : '☆'}
+                          </Text>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -164,4 +206,6 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   status: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1.5, textTransform: 'uppercase' },
+  starsRow: { flexDirection: 'row', gap: 4, marginTop: 4 },
+  star: { fontSize: 20 },
 });

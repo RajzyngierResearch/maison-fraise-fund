@@ -61,6 +61,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const is_gift = pi.metadata.is_gift === 'true';
         const gift_note = pi.metadata.gift_note || null;
         const customer_email = pi.metadata.customer_email;
+        const discount_applied = pi.metadata.discount_applied === 'true';
 
         // Decrement stock
         await db
@@ -89,6 +90,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
             customer_email,
             gift_note,
             nfc_token,
+            discount_applied,
           })
           .returning();
 
@@ -201,7 +203,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
             sendPushNotification(tipUser.push_token, {
               title: 'You received a tip',
               body: `CA$${(amount / 100).toFixed(2)} — thank you!`,
-              data: { screen: 'home' },
+              data: { screen: 'profile' },
             }).catch(() => {});
           }
           if (tipUser?.email) {

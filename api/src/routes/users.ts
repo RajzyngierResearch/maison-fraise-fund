@@ -4,8 +4,10 @@ import { db } from '../db';
 import {
   users, legitimacyEvents, businesses, popupRsvps, djOffers, popupNominations,
   employmentContracts, orders, varieties, timeSlots, userFollows, notifications,
+  referralCodes,
 } from '../db/schema';
 import { requireUser } from '../lib/auth';
+import { stripe } from '../lib/stripe';
 
 const router = Router();
 
@@ -689,6 +691,70 @@ router.get('/:id/placements', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/users/me/setup-intent — create or retrieve Stripe customer + SetupIntent
+router.post('/me/setup-intent', requireUser, async (req: Request, res: Response) => {
+  const user_id = (req as any).userId as number;
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, user_id));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    let customerId = user.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.display_name ?? undefined,
+        metadata: { user_id: String(user_id) },
+      });
+      customerId = customer.id;
+      await db.update(users).set({ stripe_customer_id: customerId }).where(eq(users.id, user_id));
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      usage: 'off_session',
+    });
+
+    res.json({ client_secret: setupIntent.client_secret, customer_id: customerId });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/users/me/payment-method — attach payment method + set as default
+router.post('/me/payment-method', requireUser, async (req: Request, res: Response) => {
+  const user_id = (req as any).userId as number;
+  const { payment_method_id } = req.body;
+  if (!payment_method_id) { res.status(400).json({ error: 'payment_method_id is required' }); return; }
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, user_id));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    let customerId = user.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.display_name ?? undefined,
+        metadata: { user_id: String(user_id) },
+      });
+      customerId = customer.id;
+      await db.update(users).set({ stripe_customer_id: customerId }).where(eq(users.id, user_id));
+    }
+
+    await stripe.paymentMethods.attach(payment_method_id, { customer: customerId });
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: payment_method_id },
+    });
+
+    if (!user.stripe_customer_id) {
+      await db.update(users).set({ stripe_customer_id: customerId }).where(eq(users.id, user_id));
+    }
+
+    res.json({ success: true, customer_id: customerId });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/users/:id/legitimacy — score breakdown by event type
 router.get('/:id/legitimacy', async (req: Request, res: Response) => {
   const user_id = parseInt(req.params.id, 10);
@@ -706,6 +772,85 @@ router.get('/:id/legitimacy', async (req: Request, res: Response) => {
 
     const total = events.reduce((s, e) => s + (e.total ?? 0), 0);
     res.json({ total, breakdown: events });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/me/referral-code — get or create referral code for current user
+router.get('/me/referral-code', requireUser, async (req: Request, res: Response) => {
+  const user_id = (req as any).userId as number;
+  try {
+    const [existing] = await db
+      .select({ code: referralCodes.code, uses: referralCodes.uses })
+      .from(referralCodes)
+      .where(eq(referralCodes.user_id, user_id));
+
+    if (existing) {
+      res.json(existing);
+      return;
+    }
+
+    // Generate a new 6-character uppercase alphanumeric code
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const [inserted] = await db
+      .insert(referralCodes)
+      .values({ user_id, code, uses: 0 })
+      .returning({ code: referralCodes.code, uses: referralCodes.uses });
+
+    res.json(inserted);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/users/me/apply-referral — apply a referral code at signup
+router.post('/me/apply-referral', requireUser, async (req: Request, res: Response) => {
+  const user_id = (req as any).userId as number;
+  const { code } = req.body;
+  if (!code || typeof code !== 'string') {
+    res.status(400).json({ error: 'code is required' });
+    return;
+  }
+
+  try {
+    const [referral] = await db
+      .select()
+      .from(referralCodes)
+      .where(eq(referralCodes.code, code.toUpperCase()));
+
+    if (!referral) {
+      res.status(404).json({ error: 'Referral code not found' });
+      return;
+    }
+
+    if (referral.user_id === user_id) {
+      res.status(400).json({ error: 'Cannot use your own referral code' });
+      return;
+    }
+
+    const [currentUser] = await db
+      .select({ referred_by_code: users.referred_by_code })
+      .from(users)
+      .where(eq(users.id, user_id));
+
+    if (!currentUser) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    if (currentUser.referred_by_code !== null) {
+      res.status(409).json({ error: 'Referral code already applied' });
+      return;
+    }
+
+    await db.update(users).set({ referred_by_code: code.toUpperCase() }).where(eq(users.id, user_id));
+    await db
+      .update(referralCodes)
+      .set({ uses: sql`${referralCodes.uses} + 1` })
+      .where(eq(referralCodes.id, referral.id));
+
+    res.json({ discount_percent: 10 });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

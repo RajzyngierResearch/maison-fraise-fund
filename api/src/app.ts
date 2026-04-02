@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
@@ -73,11 +74,34 @@ app.get('/operator', (_req, res) => {
 });
 
 app.get('/privacy', (_req, res) => {
-  res.sendFile(path.join(__dirname, '../public/privacy.html'));
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Privacy Policy — Maison Fraise</title>
+  <style>body{font-family:Georgia,serif;max-width:680px;margin:60px auto;padding:0 24px;color:#1a1a1a;line-height:1.7}h1{font-size:24px}h2{font-size:18px;margin-top:32px}p{margin:12px 0}</style></head>
+  <body><h1>Privacy Policy</h1><p>Last updated: ${new Date().toLocaleDateString('en-CA')}</p>
+  <p>Maison Fraise ("we", "our") operates the Maison Fraise mobile application. This policy describes how we collect, use, and protect your information.</p>
+  <h2>Information We Collect</h2><p>We collect your name, email address, and Apple ID when you sign in with Apple. We collect order information including variety, quantity, pickup location, and payment details processed by Stripe.</p>
+  <h2>How We Use Your Information</h2><p>We use your information to process orders, send order confirmations and status updates, and improve our service. We do not sell your personal information.</p>
+  <h2>Data Retention</h2><p>We retain order records for accounting purposes. You may request deletion of your account by contacting us.</p>
+  <h2>Contact</h2><p>For privacy inquiries: privacy@maison-fraise.com</p>
+  </body></html>`);
+});
+
+app.get('/terms', (_req, res) => {
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Terms of Service — Maison Fraise</title>
+  <style>body{font-family:Georgia,serif;max-width:680px;margin:60px auto;padding:0 24px;color:#1a1a1a;line-height:1.7}h1{font-size:24px}h2{font-size:18px;margin-top:32px}p{margin:12px 0}</style></head>
+  <body><h1>Terms of Service</h1><p>Last updated: ${new Date().toLocaleDateString('en-CA')}</p>
+  <p>By using the Maison Fraise app, you agree to these terms.</p>
+  <h2>Orders</h2><p>All orders are final. Refunds are issued at our discretion for quality issues. Orders not collected within 2 hours of the designated time slot may be forfeited.</p>
+  <h2>Payments</h2><p>Payments are processed securely by Stripe. We do not store card details.</p>
+  <h2>Accounts</h2><p>You are responsible for maintaining the security of your account. We may terminate accounts that violate these terms.</p>
+  <h2>Contact</h2><p>For support: hello@maison-fraise.com</p>
+  </body></html>`);
 });
 
 app.get('/support', (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/support.html'));
 });
+
+// Sentry error handler — must be after all routes
+app.use(Sentry.expressErrorHandler());
 
 export default app;
