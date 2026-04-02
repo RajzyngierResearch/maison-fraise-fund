@@ -50,10 +50,10 @@ async function verifyAppleToken(identityToken: string): Promise<{ sub: string; e
 }
 
 // POST /api/auth/apple
-// Body: { identity_token: string }
+// Body: { identity_token: string, push_token?: string }
 // Returns: { user_db_id: number, email: string }
 router.post('/apple', async (req: Request, res: Response) => {
-  const { identity_token } = req.body;
+  const { identity_token, push_token } = req.body;
   if (!identity_token) {
     res.status(400).json({ error: 'identity_token is required' });
     return;
@@ -62,9 +62,14 @@ router.post('/apple', async (req: Request, res: Response) => {
   try {
     const { sub: appleUserId, email } = await verifyAppleToken(identity_token);
 
+    const pushUpdate = push_token ? { push_token } : {};
+
     // 1. Look up by apple_user_id first
     const [byApple] = await db.select().from(users).where(eq(users.apple_user_id, appleUserId));
     if (byApple) {
+      if (push_token && byApple.push_token !== push_token) {
+        await db.update(users).set({ push_token }).where(eq(users.id, byApple.id));
+      }
       res.json({ user_db_id: byApple.id, email: byApple.email });
       return;
     }
@@ -75,7 +80,7 @@ router.post('/apple', async (req: Request, res: Response) => {
       if (byEmail) {
         const [linked] = await db
           .update(users)
-          .set({ apple_user_id: appleUserId })
+          .set({ apple_user_id: appleUserId, ...pushUpdate })
           .where(eq(users.id, byEmail.id))
           .returning();
         res.json({ user_db_id: linked.id, email: linked.email });
@@ -85,18 +90,31 @@ router.post('/apple', async (req: Request, res: Response) => {
       // 3. Brand new user — create account
       const [created] = await db
         .insert(users)
-        .values({ email, apple_user_id: appleUserId })
+        .values({ email, apple_user_id: appleUserId, ...pushUpdate })
         .returning();
       res.json({ user_db_id: created.id, email: created.email });
       return;
     }
 
-    // apple_user_id not in DB and no email from token — Apple only sends email on first sign-in.
-    // This means the user previously signed in on another install and their account was lost.
     res.status(404).json({ error: 'Account not found. Place an order first so we can link your Apple ID.' });
   } catch (err: unknown) {
     logger.error('Apple auth error', err);
     res.status(401).json({ error: err instanceof Error ? err.message : 'Authentication failed' });
+  }
+});
+
+// PATCH /api/auth/push-token — update push token for an existing user
+router.patch('/push-token', async (req: Request, res: Response) => {
+  const { user_id, push_token } = req.body;
+  if (!user_id || !push_token) {
+    res.status(400).json({ error: 'user_id and push_token are required' });
+    return;
+  }
+  try {
+    await db.update(users).set({ push_token }).where(eq(users.id, user_id));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

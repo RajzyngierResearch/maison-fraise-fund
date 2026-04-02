@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../context/PanelContext';
 import PanelNavigator from '../components/PanelNavigator';
-import { fetchBusinesses } from '../lib/api';
+import { fetchBusinesses, updatePushToken } from '../lib/api';
 import { useColors } from '../theme';
 import { useApp } from '../../App';
 
@@ -121,6 +121,13 @@ export default function MapScreen() {
   useEffect(() => {
     AsyncStorage.getItem('verified').then(v => setIsVerified(v === 'true')).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!pushToken) return;
+    AsyncStorage.getItem('user_db_id').then(id => {
+      if (id) updatePushToken(parseInt(id, 10), pushToken).catch(() => {});
+    }).catch(() => {});
+  }, [pushToken]);
 
   const onSheetLayout = useCallback((e: LayoutChangeEvent) => {
     const h = e.nativeEvent.layout.height;

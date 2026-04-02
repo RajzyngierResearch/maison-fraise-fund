@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { useApp } from '../../../App';
 import { usePanel } from '../../context/PanelContext';
 import {
   signInWithApple, fetchStandingOrders, updateStandingOrder,
@@ -19,6 +20,7 @@ import { useTheme } from '../../context/ThemeContext';
 
 export default function ProfilePanel() {
   const { goHome, jumpToPanel, showPanel, setOrder, setActiveLocation, varieties, businesses } = usePanel();
+  const { pushToken } = useApp();
   const c = useColors();
   const { isDark } = useTheme();
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export default function ProfilePanel() {
         ],
       });
       if (!credential.identityToken) throw new Error('No identity token received.');
-      const result = await signInWithApple(credential.identityToken);
+      const result = await signInWithApple(credential.identityToken, pushToken);
       await AsyncStorage.setItem('user_db_id', String(result.user_db_id));
       await AsyncStorage.setItem('user_email', result.email);
       setUserEmail(result.email);

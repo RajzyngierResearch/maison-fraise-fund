@@ -144,17 +144,25 @@ export async function confirmOrder(orderId: number) {
   }>;
 }
 
-export async function signInWithApple(identity_token: string): Promise<{ user_db_id: number; email: string }> {
+export async function signInWithApple(identity_token: string, push_token?: string | null): Promise<{ user_db_id: number; email: string }> {
   const res = await fetch(`${BASE_URL}/api/auth/apple`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identity_token }),
+    body: JSON.stringify({ identity_token, push_token: push_token ?? undefined }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error ?? 'Sign in failed');
   }
   return res.json();
+}
+
+export async function updatePushToken(user_id: number, push_token: string): Promise<void> {
+  await fetch(`${BASE_URL}/api/auth/push-token`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id, push_token }),
+  });
 }
 
 export async function fetchHostedPopups(userId: number) {
