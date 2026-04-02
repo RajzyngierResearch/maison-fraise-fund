@@ -272,7 +272,7 @@ router.post('/:id/nominations', async (req: Request, res: Response) => {
           sendPushNotification(user.push_token, {
             title: 'Maison Fraise',
             body: `You've been nominated at tonight's popup, ${name}.`,
-            data: { screen: 'nomination', popup_id },
+            data: { screen: 'nominate', popup_id },
           }).catch(() => {});
         }
       }).catch(() => {});
