@@ -21,35 +21,40 @@ export default function FinishPanel() {
         <Text style={[styles.title, { color: c.text }]}>Finish</Text>
         <View style={styles.headerSpacer} />
       </View>
-      <Text style={[styles.subtitle, { color: c.muted }]}>{order.variety_name ?? '—'} · {order.chocolate_name ?? '—'}</Text>
 
-      <View style={styles.options}>
-        {FINISHES.map(fin => {
-          const isSelected = selected === fin.id;
-          return (
-            <TouchableOpacity
-              key={fin.id}
-              style={[
-                styles.card,
-                { backgroundColor: c.optionCard, borderColor: c.optionCardBorder },
-                isSelected && { backgroundColor: c.accent, borderColor: 'transparent' },
-              ]}
-              onPress={() => setSelected(fin.id)}
-              activeOpacity={0.85}
-            >
-              <View style={styles.cardTop}>
-                <Text style={[styles.cardName, { color: isSelected ? '#fff' : c.text }]}>{fin.name}</Text>
-                {fin.tag && (
-                  <View style={[styles.tag, { backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : c.cardDark }]}>
-                    <Text style={[styles.tagText, { color: isSelected ? '#fff' : c.muted }]}>{fin.tag}</Text>
+      <View style={styles.body}>
+        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+          {FINISHES.map((fin, i) => {
+            const isSelected = selected === fin.id;
+            return (
+              <React.Fragment key={fin.id}>
+                {i > 0 && <View style={[styles.divider, { backgroundColor: c.border }]} />}
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => setSelected(fin.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.rowText}>
+                    <View style={styles.rowTop}>
+                      <Text style={[styles.finName, { color: c.text }]}>{fin.name}</Text>
+                      {fin.tag && (
+                        <View style={[styles.tag, { backgroundColor: c.cardDark }]}>
+                          <Text style={[styles.tagText, { color: c.muted }]}>{fin.tag}</Text>
+                        </View>
+                      )}
+                    </View>
+                    {isSelected && (
+                      <Text style={[styles.finDesc, { color: c.muted }]}>{fin.description} {fin.tagline}</Text>
+                    )}
                   </View>
-                )}
-              </View>
-              <Text style={[styles.cardDesc, { color: isSelected ? 'rgba(255,255,255,0.8)' : c.muted }]}>{fin.description}</Text>
-              <Text style={[styles.cardTagline, { color: isSelected ? 'rgba(255,255,255,0.55)' : c.muted }]}>{fin.tagline}</Text>
-            </TouchableOpacity>
-          );
-        })}
+                  <View style={[styles.radio, { borderColor: isSelected ? c.accent : c.border }]}>
+                    {isSelected && <View style={[styles.radioDot, { backgroundColor: c.accent }]} />}
+                  </View>
+                </TouchableOpacity>
+              </React.Fragment>
+            );
+          })}
+        </View>
       </View>
 
       <View style={[styles.footer, { borderTopColor: c.border, paddingBottom: insets.bottom || SPACING.md }]}>
@@ -77,30 +82,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingTop: 8,
-    paddingBottom: 14,
+    paddingTop: 18,
+    paddingBottom: 18,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backBtn: { width: 40, paddingVertical: 4 },
-  backBtnText: { fontSize: 22, lineHeight: 28 },
+  backBtnText: { fontSize: 28, lineHeight: 34 },
   title: { flex: 1, textAlign: 'center', fontSize: 20, fontFamily: fonts.playfair },
   headerSpacer: { width: 40 },
-  subtitle: { textAlign: 'center', fontSize: 13, fontFamily: fonts.dmSans, paddingTop: 10, paddingBottom: 4, paddingHorizontal: SPACING.md },
-  options: { flex: 1, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, gap: 10 },
-  card: {
-    flex: 1,
-    borderRadius: 16,
-    padding: SPACING.md,
-    gap: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: 'center',
-  },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  cardName: { fontSize: 20, fontFamily: fonts.playfair, flex: 1 },
-  tag: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  body: { flex: 1, paddingHorizontal: SPACING.md, paddingTop: SPACING.md, justifyContent: 'center' },
+  card: { borderRadius: 16, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: 14, gap: 12 },
+  rowText: { flex: 1, gap: 2 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  finName: { fontSize: 15, fontFamily: fonts.playfair },
+  finDesc: { fontSize: 12, fontFamily: fonts.dmSans, lineHeight: 18, marginTop: 2, fontStyle: 'italic' },
+  tag: { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   tagText: { fontSize: 9, fontFamily: fonts.dmMono, letterSpacing: 1 },
-  cardDesc: { fontSize: 14, fontFamily: fonts.dmSans, lineHeight: 20 },
-  cardTagline: { fontSize: 12, fontFamily: fonts.dmSans, fontStyle: 'italic' },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
+  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: SPACING.md },
   footer: { padding: SPACING.md, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
   cta: { borderRadius: 16, paddingVertical: 20, alignItems: 'center' },
   ctaDisabled: { opacity: 0.3 },

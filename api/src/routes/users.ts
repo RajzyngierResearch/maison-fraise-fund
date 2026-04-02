@@ -1,7 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { eq, like, sum } from 'drizzle-orm';
+import { eq, sum, and, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { users, legitimacyEvents } from '../db/schema';
+import {
+  users, legitimacyEvents, businesses, popupRsvps, djOffers, popupNominations,
+} from '../db/schema';
 
 const router = Router();
 
@@ -50,6 +52,155 @@ router.get('/search', async (req: Request, res: Response) => {
 
     const filtered = rows.filter(u => String(u.id).includes(q));
     res.json(filtered);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/users/:id/dj — toggle DJ status
+router.patch('/:id/dj', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  const { is_dj } = req.body;
+  if (isNaN(user_id) || typeof is_dj !== 'boolean') {
+    res.status(400).json({ error: 'is_dj boolean is required' });
+    return;
+  }
+
+  try {
+    await db.update(users).set({ is_dj }).where(eq(users.id, user_id));
+    res.json({ success: true, is_dj });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/popup-rsvps
+router.get('/:id/popup-rsvps', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) {
+    res.status(400).json({ error: 'Invalid user id' });
+    return;
+  }
+
+  try {
+    const rows = await db
+      .select({
+        rsvp_id: popupRsvps.id,
+        popup_id: popupRsvps.popup_id,
+        status: popupRsvps.status,
+        created_at: popupRsvps.created_at,
+        popup_name: businesses.name,
+        popup_starts_at: businesses.starts_at,
+        popup_address: businesses.address,
+      })
+      .from(popupRsvps)
+      .innerJoin(businesses, eq(popupRsvps.popup_id, businesses.id))
+      .where(eq(popupRsvps.user_id, user_id));
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/dj-gigs — pending + accepted DJ offers
+router.get('/:id/dj-gigs', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) {
+    res.status(400).json({ error: 'Invalid user id' });
+    return;
+  }
+
+  try {
+    const rows = await db
+      .select({
+        offer_id: djOffers.id,
+        popup_id: djOffers.popup_id,
+        status: djOffers.status,
+        allocation_boxes: djOffers.allocation_boxes,
+        organizer_note: djOffers.organizer_note,
+        popup_name: businesses.name,
+        popup_address: businesses.address,
+        popup_starts_at: businesses.starts_at,
+        popup_ends_at: businesses.ends_at,
+        popup_neighbourhood: businesses.neighbourhood,
+      })
+      .from(djOffers)
+      .innerJoin(businesses, eq(djOffers.popup_id, businesses.id))
+      .where(eq(djOffers.dj_user_id, user_id))
+      .orderBy(businesses.starts_at);
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/allocations — accepted DJ box allocations
+router.get('/:id/allocations', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) {
+    res.status(400).json({ error: 'Invalid user id' });
+    return;
+  }
+
+  try {
+    const rows = await db
+      .select({
+        offer_id: djOffers.id,
+        popup_id: djOffers.popup_id,
+        allocation_boxes: djOffers.allocation_boxes,
+        status: djOffers.status,
+        popup_name: businesses.name,
+        popup_starts_at: businesses.starts_at,
+      })
+      .from(djOffers)
+      .innerJoin(businesses, eq(djOffers.popup_id, businesses.id))
+      .where(and(eq(djOffers.dj_user_id, user_id), eq(djOffers.status, 'accepted')));
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/hosted-popups — popups hosted by this user
+router.get('/:id/hosted-popups', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) {
+    res.status(400).json({ error: 'Invalid user id' });
+    return;
+  }
+
+  try {
+    const popups = await db
+      .select()
+      .from(businesses)
+      .where(and(eq(businesses.host_user_id, user_id), eq(businesses.type, 'popup')));
+
+    const results = await Promise.all(
+      popups.map(async p => {
+        const [nomRow] = await db
+          .select({ total: sql<number>`cast(count(*) as int)` })
+          .from(popupNominations)
+          .where(eq(popupNominations.popup_id, p.id));
+
+        const nomination_count = nomRow?.total ?? 0;
+        const threshold_met = nomination_count >= 10;
+
+        return {
+          id: p.id,
+          venue_name: p.name,
+          date: p.starts_at?.toISOString() ?? p.launched_at.toISOString(),
+          is_audition: p.is_audition,
+          audition_status: p.audition_status as 'pending' | 'passed' | 'failed' | null,
+          nomination_count,
+          threshold_met,
+        };
+      })
+    );
+
+    res.json(results);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

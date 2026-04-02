@@ -6,18 +6,11 @@ import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
 import { QUANTITIES } from '../../data/seed';
 
-// Split quantities into rows of 2
-const QTY_ROWS = QUANTITIES.reduce<number[][]>((acc, q, i) => {
-  if (i % 2 === 0) acc.push([q]);
-  else acc[acc.length - 1].push(q);
-  return acc;
-}, []);
-
 export default function QuantityPanel() {
   const { goBack, showPanel, order, setOrder } = usePanel();
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const [selected, setSelected] = useState<number>(order.quantity ?? 4);
+  const [selected, setSelected] = useState<number>(order.quantity);
   const [isGift, setIsGift] = useState(order.is_gift);
 
   return (
@@ -31,31 +24,26 @@ export default function QuantityPanel() {
       </View>
 
       <View style={styles.body}>
-        <View style={styles.grid}>
-          {QTY_ROWS.map((row, ri) => (
-            <View key={ri} style={styles.gridRow}>
-              {row.map(q => {
-                const isSelected = selected === q;
-                return (
-                  <TouchableOpacity
-                    key={q}
-                    style={[
-                      styles.qCard,
-                      { backgroundColor: c.optionCard, borderColor: c.optionCardBorder },
-                      isSelected && { backgroundColor: c.accent, borderColor: 'transparent' },
-                    ]}
-                    onPress={() => setSelected(q)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.qNum, { color: isSelected ? '#fff' : c.text }]}>{q}</Text>
-                    <Text style={[styles.qLabel, { color: isSelected ? 'rgba(255,255,255,0.7)' : c.muted }]}>
-                      {q === 1 ? 'strawberry' : 'strawberries'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
+        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
+          {QUANTITIES.map((q, i) => {
+            const isSelected = selected === q;
+            return (
+              <React.Fragment key={q}>
+                {i > 0 && <View style={[styles.divider, { backgroundColor: c.border }]} />}
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => setSelected(q)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.qNum, { color: c.text }]}>{q}</Text>
+                  <Text style={[styles.qLabel, { color: c.muted }]}>{q === 1 ? 'strawberry' : 'strawberries'}</Text>
+                  <View style={[styles.radio, { borderColor: isSelected ? c.accent : c.border }]}>
+                    {isSelected && <View style={[styles.radioDot, { backgroundColor: c.accent }]} />}
+                  </View>
+                </TouchableOpacity>
+              </React.Fragment>
+            );
+          })}
         </View>
 
         <TouchableOpacity
@@ -80,7 +68,7 @@ export default function QuantityPanel() {
         <TouchableOpacity
           style={[styles.cta, { backgroundColor: c.accent }]}
           onPress={() => {
-            setOrder({ quantity: selected, is_gift: isGift });
+            setOrder({ quantity: selected, is_gift: isGift, ...(!isGift && { gift_note: null }) });
             showPanel(isGift ? 'gift-note' : 'when');
           }}
           activeOpacity={0.8}
@@ -98,37 +86,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingTop: 8,
-    paddingBottom: 14,
+    paddingTop: 18,
+    paddingBottom: 18,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backBtn: { width: 40, paddingVertical: 4 },
-  backBtnText: { fontSize: 22, lineHeight: 28 },
+  backBtnText: { fontSize: 28, lineHeight: 34 },
   title: { flex: 1, textAlign: 'center', fontSize: 20, fontFamily: fonts.playfair },
   headerSpacer: { width: 40 },
-  body: { flex: 1, paddingHorizontal: SPACING.md, gap: SPACING.sm },
-  grid: { flex: 1, gap: SPACING.sm },
-  gridRow: { flex: 1, flexDirection: 'row', gap: SPACING.sm },
-  qCard: {
-    flex: 1,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  qNum: { fontSize: 40, fontFamily: fonts.playfair },
-  qLabel: { fontSize: 13, fontFamily: fonts.dmSans },
+  body: { flex: 1, paddingHorizontal: SPACING.md, paddingTop: SPACING.md, gap: SPACING.md, justifyContent: 'center' },
+  card: { borderRadius: 16, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: 14, gap: 12 },
+  qNum: { fontSize: 22, fontFamily: fonts.playfair, width: 36 },
+  qLabel: { flex: 1, fontSize: 14, fontFamily: fonts.dmSans },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  radioDot: { width: 10, height: 10, borderRadius: 5 },
+  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: SPACING.md },
   giftRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: SPACING.md,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderWidth: StyleSheet.hairlineWidth,
   },
   giftLeft: { flex: 1, gap: 2 },
-  giftLabel: { fontSize: 16, fontFamily: fonts.playfair },
+  giftLabel: { fontSize: 15, fontFamily: fonts.playfair },
   giftSub: { fontSize: 12, fontFamily: fonts.dmSans },
   footer: { padding: SPACING.md, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
   cta: { borderRadius: 16, paddingVertical: 20, alignItems: 'center' },

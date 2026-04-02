@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,30 +7,21 @@ import { usePanel } from '../../context/PanelContext';
 import { useApp } from '../../../App';
 import { createOrder, confirmOrder } from '../../lib/api';
 import { useStripe } from '@stripe/stripe-react-native';
+import * as Haptics from 'expo-haptics';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
 
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function formatDate(iso: string | null): string {
   if (!iso) return '';
   const [y, m, d] = iso.split('-').map(Number);
   const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' });
-}
-
-function Row({ label, value, sub, c }: { label: string; value: string; sub?: string; c: any }) {
-  return (
-    <View style={styles.row}>
-      <Text style={[styles.rowLabel, { color: c.muted }]}>{label}</Text>
-      <View style={styles.rowRight}>
-        <Text style={[styles.rowValue, { color: c.text }]}>{value}</Text>
-        {sub && <Text style={[styles.rowSub, { color: c.muted }]}>{sub}</Text>}
-      </View>
-    </View>
-  );
+  return `${DAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${d}`;
 }
 
 export default function ReviewPanel() {
-  const { goBack, showPanel, order, setOrder } = usePanel();
+  const { goBack, showPanel, jumpToPanel, currentPanel, order, setOrder, varieties, businesses } = usePanel();
   const { reviewMode, pushToken } = useApp();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const c = useColors();
@@ -38,17 +29,64 @@ export default function ReviewPanel() {
   const [email, setEmail] = useState(order.customer_email);
   const [loading, setLoading] = useState(false);
 
+  // Refresh email from storage whenever this panel becomes active (e.g. returning from profile sign-in)
+  useEffect(() => {
+    if (currentPanel === 'review' && !email) {
+      AsyncStorage.getItem('user_email').then(stored => {
+        if (stored) setEmail(stored);
+      });
+    }
+  }, [currentPanel]);
+
   const totalCents = (order.price_cents ?? 0) * order.quantity;
+
+  const activeBiz = businesses.find(b => b.id === order.location_id);
+  const isPopupLive = (() => {
+    if (activeBiz?.type !== 'popup' || !activeBiz.launched_at) return false;
+    const start = new Date(activeBiz.launched_at);
+    const end = activeBiz.ends_at
+      ? new Date(activeBiz.ends_at)
+      : new Date(start.getTime() + 4 * 60 * 60 * 1000);
+    const now = new Date();
+    return now >= start && now < end;
+  })();
+
+  const liveVariety = varieties.find(v => v.id === order.variety_id);
+  const isSoldOut = liveVariety != null && liveVariety.stock_remaining === 0;
+  const isQuantityOverStock = liveVariety != null && !isSoldOut && order.quantity > liveVariety.stock_remaining;
 
   const handlePay = async () => {
     if (!email || !email.includes('@')) {
       Alert.alert('Email required', 'Enter a valid email for your receipt.');
       return;
     }
-    if (!order.variety_id || !order.location_id || !order.time_slot_id) {
+    if (!liveVariety) {
+      Alert.alert('No longer available', 'This variety isn\'t available today. Go back and choose another.', [
+        { text: 'Go back', onPress: goBack },
+      ]);
+      return;
+    }
+    if (isSoldOut) {
+      Alert.alert('Sold out', `${order.variety_name} sold out while you were ordering. Go back and choose another.`, [
+        { text: 'Go back', onPress: goBack },
+      ]);
+      return;
+    }
+    if (isQuantityOverStock) {
+      Alert.alert('Not enough stock', `Only ${liveVariety.stock_remaining} left — go back and reduce your quantity.`, [
+        { text: 'Go back', onPress: goBack },
+      ]);
+      return;
+    }
+    if (totalCents === 0) {
+      Alert.alert('Price unavailable', 'Return to the order flow and reselect your variety.');
+      return;
+    }
+    if (!order.variety_id || !order.location_id || !order.time_slot_id || !order.chocolate || !order.finish) {
       Alert.alert('Incomplete', 'Something is missing from your order.');
       return;
     }
+    if (email) AsyncStorage.setItem('user_email', email);
     setLoading(true);
     try {
       setOrder({ customer_email: email });
@@ -62,6 +100,8 @@ export default function ReviewPanel() {
         is_gift: order.is_gift,
         customer_email: email,
         push_token: pushToken,
+        gift_note: order.gift_note ?? null,
+        ordered_at_popup: isPopupLive,
       });
 
       let confirmed;
@@ -84,10 +124,11 @@ export default function ReviewPanel() {
           },
         });
         if (initErr) throw new Error(initErr.message);
-        TrueSheet.present('main-sheet', 1);
+        TrueSheet.present('main-sheet', 0);
         const { error: presentErr } = await presentPaymentSheet();
         if (presentErr) {
-          if (presentErr.code === 'Canceled') { TrueSheet.present('main-sheet', 2); setLoading(false); return; }
+          setTimeout(() => TrueSheet.present('main-sheet', 1), 150);
+          if (presentErr.code === 'Canceled') { setLoading(false); return; }
           throw new Error(presentErr.message);
         }
         confirmed = await confirmOrder(created.id);
@@ -101,6 +142,7 @@ export default function ReviewPanel() {
       if (confirmed.user_db_id) {
         await AsyncStorage.setItem('user_db_id', String(confirmed.user_db_id));
       }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showPanel('confirmation');
     } catch (err: unknown) {
       Alert.alert('Something went wrong.', err instanceof Error ? err.message : 'Try again.');
@@ -109,40 +151,44 @@ export default function ReviewPanel() {
     }
   };
 
+  const spec = [order.chocolate_name, order.finish_name, order.quantity > 1 ? `×${order.quantity}` : null]
+    .filter(Boolean).join(' · ');
+
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
       <View style={[styles.header, { borderBottomColor: c.border }]}>
-        <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={goBack} style={styles.backBtn} disabled={loading} activeOpacity={loading ? 1 : 0.7}>
           <Text style={[styles.backBtnText, { color: c.accent }]}>←</Text>
         </TouchableOpacity>
         <Text style={[styles.title, { color: c.text }]}>Review</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
-          <Row label="STRAWBERRY" value={order.variety_name ?? '—'} c={c} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row label="CHOCOLATE" value={order.chocolate_name ?? '—'} c={c} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row label="FINISH" value={order.finish_name ?? '—'} c={c} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row label="QUANTITY" value={String(order.quantity)} c={c} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row label="COLLECTION" value={order.location_name ?? '—'} c={c} />
-          <View style={[styles.divider, { backgroundColor: c.border }]} />
-          <Row label="WHEN" value={order.time_slot_time ?? '—'} sub={formatDate(order.date)} c={c} />
+      <View style={styles.body}>
+        <Text style={[styles.variety, { color: c.text }]}>{order.variety_name ?? '—'}</Text>
+        <Text style={[styles.spec, { color: c.muted }]}>{spec}</Text>
+        {isSoldOut && <Text style={styles.stockAlert}>Sold out</Text>}
+        {isQuantityOverStock && <Text style={styles.stockAlert}>Only {liveVariety?.stock_remaining} left — reduce quantity</Text>}
+
+        <View style={[styles.divider, { backgroundColor: c.border }]} />
+
+        <View style={styles.detailRow}>
+          <Text style={[styles.detailLabel, { color: c.muted }]}>COLLECTION</Text>
+          <Text style={[styles.detailValue, { color: c.text }]}>{order.location_name ?? '—'}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.detailLabel, { color: c.muted }]}>WHEN</Text>
+          <Text style={[styles.detailValue, { color: c.text }]}>
+            {order.time_slot_time ?? '—'}{order.date ? `  ${formatDate(order.date)}` : ''}
+          </Text>
         </View>
 
-        <View style={[styles.totalRow, { borderTopColor: c.border, borderBottomColor: c.border }]}>
-          <Text style={[styles.totalLabel, { color: c.muted }]}>TOTAL</Text>
-          <Text style={[styles.totalAmount, { color: c.text }]}>CA${(totalCents / 100).toFixed(2)}</Text>
-        </View>
+        <View style={[styles.divider, { backgroundColor: c.border }]} />
 
-        <View style={[styles.emailCard, { backgroundColor: c.card, borderColor: c.border }]}>
-          <Text style={[styles.emailLabel, { color: c.muted }]}>EMAIL FOR RECEIPT</Text>
+        <View style={styles.detailRow}>
+          <Text style={[styles.detailLabel, { color: c.muted }]}>EMAIL</Text>
           <TextInput
-            style={[styles.emailInput, { color: c.text, borderBottomColor: c.border }]}
+            style={[styles.emailInput, { color: c.text }]}
             value={email}
             onChangeText={setEmail}
             placeholder="your@email.com"
@@ -150,10 +196,20 @@ export default function ReviewPanel() {
             keyboardType="email-address"
             autoCapitalize="none"
             onFocus={() => TrueSheet.present('main-sheet', 2)}
+            onBlur={() => { if (email) AsyncStorage.setItem('user_email', email); setOrder({ customer_email: email }); }}
           />
         </View>
-        <View style={{ height: 8 }} />
-      </ScrollView>
+        {!email && (
+          <TouchableOpacity onPress={() => showPanel('profile')} activeOpacity={0.7} style={styles.signInNudge}>
+            <Text style={[styles.signInNudgeText, { color: c.muted }]}>Sign in with Apple to save your order history →</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={[styles.totalRow, { borderTopColor: c.border }]}>
+        <Text style={[styles.totalLabel, { color: c.muted }]}>TOTAL</Text>
+        <Text style={[styles.totalAmount, { color: c.text }]}>CA${(totalCents / 100).toFixed(2)}</Text>
+      </View>
 
       <View style={[styles.footer, { borderTopColor: c.border, paddingBottom: insets.bottom || SPACING.md }]}>
         <TouchableOpacity
@@ -175,31 +231,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingTop: 8,
-    paddingBottom: 14,
+    paddingTop: 16,
+    paddingBottom: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   backBtn: { width: 40, paddingVertical: 4 },
-  backBtnText: { fontSize: 22, lineHeight: 28 },
+  backBtnText: { fontSize: 28, lineHeight: 34 },
   title: { flex: 1, textAlign: 'center', fontSize: 20, fontFamily: fonts.playfair },
   headerSpacer: { width: 40 },
-  scroll: { flex: 1 },
-  body: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, gap: SPACING.md },
-  card: { borderRadius: 16, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: 16, gap: 12 },
-  rowLabel: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1.5, color: '#8E8E93' },
-  rowRight: { flex: 1, alignItems: 'flex-end', gap: 2 },
-  rowValue: { fontSize: 15, fontFamily: fonts.playfair, textAlign: 'right' },
-  rowSub: { fontSize: 12, fontFamily: fonts.dmSans },
-  divider: { height: StyleSheet.hairlineWidth, marginHorizontal: SPACING.md },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 20, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth },
+  body: { flex: 1, paddingHorizontal: SPACING.md, justifyContent: 'center', gap: SPACING.md },
+  variety: { fontSize: 36, fontFamily: fonts.playfair },
+  spec: { fontSize: 14, fontFamily: fonts.dmSans, marginTop: -8 },
+  divider: { height: StyleSheet.hairlineWidth },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  detailLabel: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1.5 },
+  detailValue: { fontSize: 15, fontFamily: fonts.playfair, textAlign: 'right', flex: 1 },
+  emailInput: { fontSize: 15, fontFamily: fonts.dmSans, textAlign: 'right', flex: 1 },
+  stockAlert: { fontSize: 12, fontFamily: fonts.dmSans, color: '#FF3B30', marginTop: -4 },
+  signInNudge: { marginTop: -8 },
+  signInNudgeText: { fontSize: 12, fontFamily: fonts.dmSans, fontStyle: 'italic', textAlign: 'right' },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.md, borderTopWidth: StyleSheet.hairlineWidth },
   totalLabel: { fontSize: 11, fontFamily: fonts.dmMono, letterSpacing: 1.8 },
   totalAmount: { fontSize: 28, fontFamily: fonts.playfair },
-  emailCard: { borderRadius: 16, padding: SPACING.md, gap: 10, borderWidth: StyleSheet.hairlineWidth },
-  emailLabel: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1.5 },
-  emailInput: { fontSize: 16, fontFamily: fonts.dmSans, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  footer: { padding: SPACING.md, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
-  payBtn: { borderRadius: 16, paddingVertical: 20, alignItems: 'center' },
+  footer: { paddingHorizontal: SPACING.md, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  payBtn: { borderRadius: 16, paddingVertical: 18, alignItems: 'center' },
   payBtnDisabled: { opacity: 0.5 },
   payBtnText: { fontSize: 16, fontFamily: fonts.dmSans, fontWeight: '700', color: '#FFFFFF' },
 });

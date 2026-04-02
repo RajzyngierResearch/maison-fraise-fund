@@ -1,28 +1,14 @@
 import { isReviewMode } from './reviewMode';
-import { API_BASE_URL } from '../config/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const BASE_URL = API_BASE_URL;
+import { API_BASE_URL as BASE_URL } from '../config/api';
 
 function reviewHeaders(): Record<string, string> {
   if (!isReviewMode()) return {};
   return { 'X-Review-Mode': process.env.EXPO_PUBLIC_REVIEW_PIN ?? '' };
 }
 
-async function userHeaders(): Promise<Record<string, string>> {
-  const userId = await AsyncStorage.getItem('user_id');
-  return userId ? { 'X-User-ID': userId } : {};
-}
-
 export async function fetchVarieties() {
   const res = await fetch(`${BASE_URL}/api/varieties`);
   if (!res.ok) throw new Error('Failed to fetch varieties');
-  return res.json();
-}
-
-export async function fetchLocations() {
-  const res = await fetch(`${BASE_URL}/api/locations`);
-  if (!res.ok) throw new Error('Failed to fetch locations');
   return res.json();
 }
 
@@ -41,14 +27,6 @@ export async function fetchOrdersByEmail(email: string) {
 export async function fetchBusinesses() {
   const res = await fetch(`${BASE_URL}/api/businesses`);
   if (!res.ok) throw new Error('Failed to fetch businesses');
-  return res.json();
-}
-
-export async function fetchUserProfile(userId: string) {
-  const res = await fetch(`${BASE_URL}/api/users/me`, {
-    headers: { 'X-User-ID': userId },
-  });
-  if (!res.ok) throw new Error('Failed to fetch profile');
   return res.json();
 }
 
@@ -82,17 +60,16 @@ export async function createStandingOrder(body: {
   next_order_date: string;
   gift_tone?: string;
 }) {
-  const headers = await userHeaders();
   const res = await fetch(`${BASE_URL}/api/standing-orders`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error ?? 'Failed to create standing order');
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? err.detail ?? 'Failed to create standing order');
   }
-  return res.json();
+  return res.json() as Promise<{ id: number; client_secret: string }>;
 }
 
 export async function fetchStandingOrders(userId: number) {
@@ -128,6 +105,7 @@ export async function createOrder(body: {
   customer_email: string;
   push_token?: string | null;
   gift_note?: string | null;
+  ordered_at_popup?: boolean;
 }) {
   const res = await fetch(`${BASE_URL}/api/orders`, {
     method: 'POST',
@@ -136,31 +114,11 @@ export async function createOrder(body: {
   });
   if (!res.ok) {
     const errBody = await res.json();
-    throw new Error(JSON.stringify(errBody));
+    throw new Error(errBody?.error ?? errBody?.detail ?? 'Order could not be created.');
   }
   return res.json() as Promise<{ order: { id: number }; client_secret: string }>;
 }
 
-export async function askClaude(
-  query: string,
-  varieties: Array<{ id: number; name: string; price_cents: number; stock_remaining: number }>,
-  businesses: Array<{ id: number; name: string; address: string; type: string }>,
-): Promise<{ response: string; action: { type: string | null; variety_id: number | null; chocolate: string | null; finish: string | null; quantity: number | null } }> {
-  const res = await fetch(`${BASE_URL}/api/ask`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query,
-      context: {
-        available_varieties: varieties,
-        businesses,
-        user_order_history: [],
-      },
-    }),
-  });
-  if (!res.ok) throw new Error('Ask failed');
-  return res.json();
-}
 
 export async function confirmOrder(orderId: number) {
   const res = await fetch(`${BASE_URL}/api/orders/${orderId}/confirm`, {
@@ -193,10 +151,180 @@ export async function signInWithApple(identity_token: string): Promise<{ user_db
     body: JSON.stringify({ identity_token }),
   });
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({}));
     throw new Error(err.error ?? 'Sign in failed');
   }
   return res.json();
+}
+
+export async function fetchHostedPopups(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/hosted-popups`);
+  if (!res.ok) throw new Error('Failed to fetch hosted popups');
+  return res.json() as Promise<{
+    id: number;
+    venue_name: string;
+    date: string;
+    is_audition: boolean;
+    audition_status: 'pending' | 'passed' | 'failed' | null;
+    nomination_count: number;
+    threshold_met: boolean;
+  }[]>;
+}
+
+export async function fetchNominationLeaderboard(popupId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/nominations/leaderboard`);
+  if (!res.ok) throw new Error('Failed to fetch leaderboard');
+  return res.json() as Promise<{ user_id: number; display_name: string; nomination_count: number }[]>;
+}
+
+export async function createCampaignCommission(body: {
+  popup_id: number;
+  user_id: number;
+  invited_user_ids: number[];
+}) {
+  const res = await fetch(`${BASE_URL}/api/campaign-commissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'Failed to create commission');
+  }
+  return res.json() as Promise<{ id: number; client_secret: string }>;
+}
+
+export async function fetchPopupAttendees(popupId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/attendees`);
+  if (!res.ok) throw new Error('Failed to fetch attendees');
+  return res.json() as Promise<{ user_id: number; display_name: string }[]>;
+}
+
+export async function submitNomination(popupId: number, nominatorId: number, nomineeId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/nominations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nominator_id: nominatorId, nominee_id: nomineeId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'Failed to submit nomination');
+  }
+  return res.json();
+}
+
+export async function fetchNominationStatus(popupId: number, userId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/nominations/status?user_id=${userId}`);
+  if (!res.ok) throw new Error('Failed to fetch nomination status');
+  return res.json() as Promise<{ has_nominated: boolean }>;
+}
+
+export async function fetchBusinessPortraits(businessId: number) {
+  const res = await fetch(`${BASE_URL}/api/businesses/${businessId}/portraits`);
+  if (!res.ok) throw new Error('Failed to fetch portraits');
+  return res.json() as Promise<{ id: number; url: string; season: string; subject_name?: string }[]>;
+}
+
+export async function acceptDjOffer(popupId: number, userId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/dj-accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'Failed to accept offer');
+  }
+  return res.json();
+}
+
+export async function passDjOffer(popupId: number, userId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/dj-pass`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) throw new Error('Failed to pass offer');
+  return res.json();
+}
+
+export async function fetchUserPopupRsvps(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/popup-rsvps`);
+  if (!res.ok) throw new Error('Failed to fetch popup RSVPs');
+  return res.json();
+}
+
+export async function fetchDjGigs(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/dj-gigs`);
+  if (!res.ok) throw new Error('Failed to fetch DJ gigs');
+  return res.json();
+}
+
+export async function fetchDjAllocations(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/allocations`);
+  if (!res.ok) throw new Error('Failed to fetch allocations');
+  return res.json();
+}
+
+export async function registerAsDj(userId: number, isDj: boolean) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/dj`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_dj: isDj }),
+  });
+  if (!res.ok) throw new Error('Failed to update DJ status');
+  return res.json();
+}
+
+export async function fetchPopupRsvpStatus(popupId: number, userId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/rsvp-status?user_id=${userId}`);
+  if (!res.ok) throw new Error('Failed to fetch RSVP status');
+  return res.json() as Promise<{ has_rsvp: boolean }>;
+}
+
+export async function createPopupRsvp(popupId: number, userId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/rsvp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'Failed to create RSVP');
+  }
+  return res.json() as Promise<{ id: number; client_secret: string }>;
+}
+
+export async function checkInPopup(popupId: number, userId: number, nfc_token: string) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/checkin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, nfc_token }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'Check-in failed');
+  }
+  return res.json();
+}
+
+export async function submitPopupRequest(body: {
+  user_id: number;
+  venue_id: number;
+  date: string;
+  time: string;
+  notes?: string;
+}) {
+  const res = await fetch(`${BASE_URL}/api/popup-requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'Failed to submit popup request');
+  }
+  return res.json() as Promise<{ id: number; client_secret: string }>;
 }
 
 export async function verifyNfc(nfc_token: string, user_db_id: number) {
@@ -206,7 +334,7 @@ export async function verifyNfc(nfc_token: string, user_db_id: number) {
     body: JSON.stringify({ nfc_token, user_id: user_db_id }),
   });
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({}));
     throw new Error(err.error ?? 'Verification failed');
   }
   return res.json();

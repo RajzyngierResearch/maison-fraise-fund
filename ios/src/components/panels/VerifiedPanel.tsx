@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { TrueSheet } from '@lodev09/react-native-true-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePanel } from '../../context/PanelContext';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
@@ -8,9 +8,10 @@ import { SPACING } from '../../theme';
 export default function VerifiedPanel() {
   const { goHome, showPanel } = usePanel();
   const c = useColors();
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: c.panelBg }]}>
       <View style={styles.body}>
         <View style={[styles.badge, { backgroundColor: c.card, borderColor: c.border }]}>
           <Text style={[styles.check, { color: c.accent }]}>✓</Text>
@@ -46,10 +47,10 @@ export default function VerifiedPanel() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.footer, { borderTopColor: c.border }]}>
+      <View style={[styles.footer, { borderTopColor: c.border, paddingBottom: insets.bottom || SPACING.md }]}>
         <TouchableOpacity
           style={[styles.doneBtn, { backgroundColor: c.text }]}
-          onPress={() => { goHome(); TrueSheet.present('main-sheet', 1); }}
+          onPress={goHome}
           activeOpacity={0.8}
         >
           <Text style={[styles.doneBtnText, { color: c.ctaText }]}>Done</Text>
@@ -61,7 +62,7 @@ export default function VerifiedPanel() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  body: { flex: 1, padding: SPACING.md, gap: SPACING.md, alignItems: 'center', paddingTop: 32 },
+  body: { flex: 1, padding: SPACING.md, gap: SPACING.md, alignItems: 'center', justifyContent: 'center' },
   badge: {
     width: 72, height: 72, borderRadius: 36,
     borderWidth: StyleSheet.hairlineWidth,

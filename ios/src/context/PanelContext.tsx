@@ -5,9 +5,7 @@ export type PanelId =
   | 'home'
   | 'profile'
   | 'location'
-  | 'ask'
   | 'gift-note'
-  | 'variety'
   | 'chocolate'
   | 'finish'
   | 'quantity'
@@ -16,7 +14,13 @@ export type PanelId =
   | 'confirmation'
   | 'nfc'
   | 'verified'
-  | 'standingOrder';
+  | 'standingOrder'
+  | 'popup-request'
+  | 'popup-detail'
+  | 'dj-offer'
+  | 'nomination'
+  | 'partner-detail'
+  | 'campaign-commission';
 
 export interface OrderState {
   variety_id: number | null;
@@ -35,6 +39,7 @@ export interface OrderState {
   is_gift: boolean;
   gift_note: string | null;
   customer_email: string;
+  ordered_at_popup: boolean;
   // post-confirm
   order_id: number | null;
   nfc_token: string | null;
@@ -46,6 +51,7 @@ export interface Variety {
   name: string;
   price_cents: number;
   stock_remaining: number;
+  location_id?: number;
   description?: string;
   farm?: string;
   flag?: string;
@@ -64,6 +70,18 @@ export interface Business {
   lng: number;
   type: string;
   description?: string;
+  instagram_handle?: string;
+  neighbourhood?: string;
+  launched_at?: string;
+  ends_at?: string;
+  hours?: string;
+  dj_name?: string;
+  organizer_note?: string;
+  rsvp_count?: number;
+  capacity?: number;
+  entrance_fee_cents?: number;
+  is_audition?: boolean;
+  audition_status?: 'pending' | 'passed' | 'failed';
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -85,6 +103,7 @@ const defaultOrder: OrderState = {
   is_gift: false,
   gift_note: null,
   customer_email: '',
+  ordered_at_popup: false,
   order_id: null,
   nfc_token: null,
   total_cents: null,
@@ -104,9 +123,9 @@ interface PanelContextValue {
   setBusinesses: (b: Business[]) => void;
   setActiveLocation: (b: Business | null) => void;
   showPanel: (id: PanelId) => void;
+  jumpToPanel: (id: PanelId) => void;
   goBack: () => void;
   goHome: () => void;
-  sheetIndexRef: React.MutableRefObject<number>;
   sheetHeight: number;
   setSheetHeight: (h: number) => void;
 }
@@ -123,7 +142,15 @@ export function PanelProvider({ children }: { children: ReactNode }) {
   const [activeLocation, setActiveLocation] = useState<Business | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const sheetIndexRef = useRef(1);
+  const animSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAnimSafety = () => {
+    if (animSafetyRef.current) { clearTimeout(animSafetyRef.current); animSafetyRef.current = null; }
+  };
+  const startAnimSafety = (done: () => void) => {
+    clearAnimSafety();
+    animSafetyRef.current = setTimeout(done, 600);
+  };
 
   const setOrder = useCallback((partial: Partial<OrderState>) => {
     setOrderState(prev => ({ ...prev, ...partial }));
@@ -135,35 +162,50 @@ export function PanelProvider({ children }: { children: ReactNode }) {
     slideAnim.setValue(1);
     setCurrentPanel(id);
     setStack(prev => [...prev, id]);
+    const done = () => { clearAnimSafety(); setIsAnimating(false); };
+    startAnimSafety(done);
     Animated.timing(slideAnim, {
       toValue: 0,
       duration: 320,
       useNativeDriver: true,
-    }).start(() => setIsAnimating(false));
-  }, [isAnimating, currentPanel, slideAnim]);
+    }).start(() => done());
+  }, [isAnimating, slideAnim]);
 
   const goBack = useCallback(() => {
     if (isAnimating || stack.length <= 1) return;
     setIsAnimating(true);
-    Animated.timing(slideAnim, {
-      toValue: 1,
-      duration: 280,
-      useNativeDriver: true,
-    }).start(() => {
+    const done = () => {
+      clearAnimSafety();
       const newStack = stack.slice(0, -1);
       setStack(newStack);
       setCurrentPanel(newStack[newStack.length - 1]);
       slideAnim.setValue(0);
       setIsAnimating(false);
-    });
+    };
+    startAnimSafety(done);
+    Animated.timing(slideAnim, {
+      toValue: 1,
+      duration: 280,
+      useNativeDriver: true,
+    }).start(() => done());
   }, [isAnimating, stack, slideAnim]);
 
   const goHome = useCallback(() => {
+    clearAnimSafety();
+    slideAnim.stopAnimation();
     setStack(['home']);
     setCurrentPanel('home');
     slideAnim.setValue(0);
     setIsAnimating(false);
-    setOrderState(defaultOrder);
+    setOrderState(prev => ({ ...defaultOrder, location_id: prev.location_id, location_name: prev.location_name }));
+  }, [slideAnim]);
+
+  // Direct navigation that bypasses isAnimating — for external triggers like map marker presses
+  const jumpToPanel = useCallback((id: PanelId) => {
+    setIsAnimating(false);
+    slideAnim.setValue(0);
+    setCurrentPanel(id);
+    setStack(['home', id]);
   }, [slideAnim]);
 
   return (
@@ -171,7 +213,7 @@ export function PanelProvider({ children }: { children: ReactNode }) {
       stack, currentPanel, slideAnim, isAnimating,
       order, varieties, businesses, activeLocation,
       setOrder, setVarieties, setBusinesses, setActiveLocation,
-      showPanel, goBack, goHome, sheetIndexRef,
+      showPanel, jumpToPanel, goBack, goHome,
       sheetHeight, setSheetHeight,
     }}>
       {children}

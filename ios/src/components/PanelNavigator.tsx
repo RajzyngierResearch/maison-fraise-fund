@@ -1,10 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Dimensions } from 'react-native';
+import { Animated, StyleSheet, useWindowDimensions } from 'react-native';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../context/PanelContext';
 import HomePanel from './panels/HomePanel';
-import AskPanel from './panels/AskPanel';
-import VarietyPanel from './panels/VarietyPanel';
 import ChocolatePanel from './panels/ChocolatePanel';
 import FinishPanel from './panels/FinishPanel';
 import QuantityPanel from './panels/QuantityPanel';
@@ -17,16 +15,18 @@ import StandingOrderPanel from './panels/StandingOrderPanel';
 import ProfilePanel from './panels/ProfilePanel';
 import LocationPanel from './panels/LocationPanel';
 import GiftNotePanel from './panels/GiftNotePanel';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
+import PopupRequestPanel from './panels/PopupRequestPanel';
+import PopupDetailPanel from './panels/PopupDetailPanel';
+import DjOfferPanel from './panels/DjOfferPanel';
+import NominationPanel from './panels/NominationPanel';
+import PartnerDetailPanel from './panels/PartnerDetailPanel';
+import CampaignCommissionPanel from './panels/CampaignCommissionPanel';
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
   profile: ProfilePanel,
   location: LocationPanel,
-  ask: AskPanel,
   'gift-note': GiftNotePanel,
-  variety: VarietyPanel,
   chocolate: ChocolatePanel,
   finish: FinishPanel,
   quantity: QuantityPanel,
@@ -36,24 +36,41 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   nfc: NFCPanel,
   verified: VerifiedPanel,
   standingOrder: StandingOrderPanel,
+  'popup-request': PopupRequestPanel,
+  'popup-detail': PopupDetailPanel,
+  'dj-offer': DjOfferPanel,
+  'nomination': NominationPanel,
+  'partner-detail': PartnerDetailPanel,
+  'campaign-commission': CampaignCommissionPanel,
 };
 
 // Panels that should always expand the sheet to full height
 const FULL_HEIGHT_PANELS = new Set([
-  'variety', 'chocolate', 'finish', 'quantity', 'gift-note', 'when', 'review', 'confirmation', 'nfc', 'verified', 'standingOrder', 'ask',
+  'location', 'chocolate', 'finish', 'quantity', 'gift-note', 'when', 'review', 'confirmation', 'nfc', 'verified', 'standingOrder',
+  'popup-request', 'popup-detail', 'dj-offer', 'nomination', 'partner-detail', 'campaign-commission',
 ]);
+
+// Panels that expand to medium height
+const MEDIUM_HEIGHT_PANELS = new Set<string>();
 
 export default function PanelNavigator() {
   const { currentPanel, slideAnim } = usePanel();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
   const CurrentComponent = PANELS[currentPanel] ?? HomePanel;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(false);
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (FULL_HEIGHT_PANELS.has(currentPanel)) {
-      // Delay slightly so the panel slide animation (320ms) doesn't conflict
       timerRef.current = setTimeout(() => TrueSheet.present('main-sheet', 2), 350);
+    } else if (MEDIUM_HEIGHT_PANELS.has(currentPanel)) {
+      timerRef.current = setTimeout(() => TrueSheet.present('main-sheet', 1), 350);
+    } else if (currentPanel === 'home' && mountedRef.current) {
+      // Collapse to medium when navigating back to home — skip on initial mount
+      timerRef.current = setTimeout(() => TrueSheet.present('main-sheet', 1), 350);
     }
+    mountedRef.current = true;
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [currentPanel]);
 
@@ -72,5 +89,5 @@ export default function PanelNavigator() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
+  container: { flex: 1, backgroundColor: 'transparent' },
 });

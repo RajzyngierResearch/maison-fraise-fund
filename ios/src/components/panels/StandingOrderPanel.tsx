@@ -1,8 +1,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { usePanel } from '../../context/PanelContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
+import { useStripe } from '@stripe/stripe-react-native';
+import { usePanel } from '../../context/PanelContext';
+import { useApp } from '../../../App';
 import { searchVerifiedUsers, generateGiftNote, createStandingOrder } from '../../lib/api';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
@@ -16,14 +19,22 @@ const TIME_PREFS = ['9:00 – 11:00', '11:00 – 13:00', '13:00 – 15:00', '15:
 const TONES = ['warm', 'funny', 'poetic', 'minimal'] as const;
 
 export default function StandingOrderPanel() {
-  const { goBack, goHome, order } = usePanel();
+  const { goBack, goHome, order, varieties } = usePanel();
+  const { reviewMode } = useApp();
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const [userDbId, setUserDbId] = useState<number | null>(null);
+  const [isVerified, setIsVerified] = useState(false);
   const [type, setType] = useState<'personal' | 'gift'>('personal');
 
   useEffect(() => {
-    AsyncStorage.getItem('user_db_id').then(val => {
-      if (val) setUserDbId(parseInt(val, 10));
+    Promise.all([
+      AsyncStorage.getItem('user_db_id'),
+      AsyncStorage.getItem('verified'),
+    ]).then(([dbId, verified]) => {
+      if (dbId) setUserDbId(parseInt(dbId, 10));
+      setIsVerified(verified === 'true');
     });
   }, []);
   const [freq, setFreq] = useState('monthly');
@@ -36,9 +47,11 @@ export default function StandingOrderPanel() {
   const [notePreview, setNotePreview] = useState('');
   const [noteLoading, setNoteLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   const selectedFreq = FREQUENCIES.find(f => f.key === freq)!;
-  const totalCents = (order.price_cents ?? 0) * order.quantity * selectedFreq.cycles;
+  const priceCents = varieties.find(v => v.id === order.variety_id)?.price_cents ?? order.price_cents ?? null;
+  const totalCents = priceCents !== null ? priceCents * order.quantity * selectedFreq.cycles : null;
 
   const handleSearch = useCallback(async (q: string) => {
     setRecipientQuery(q);
@@ -52,14 +65,24 @@ export default function StandingOrderPanel() {
 
   const handlePreview = async () => {
     setNoteLoading(true);
-    try { setNotePreview((await generateGiftNote(tone, order.variety_name ?? '', '')).note); }
+    try { setNotePreview((await generateGiftNote(tone, order.variety_name ?? '', selectedRecipient?.user_id ?? '')).note); }
     catch { Alert.alert('Could not generate note'); }
     finally { setNoteLoading(false); }
   };
 
   const handleConfirm = async () => {
+    const senderId = userDbId;
+    if (!senderId || !isVerified) return;
+    if (!order.variety_id || !order.location_id || !order.chocolate || !order.finish) {
+      Alert.alert('Incomplete order', 'Return to the order flow and complete your selection first.');
+      return;
+    }
     if (type === 'gift' && !selectedRecipient) {
       Alert.alert('Recipient required', 'Search for and select a verified member.');
+      return;
+    }
+    if (totalCents === null) {
+      Alert.alert('Pricing unavailable', 'Return to the order flow and reselect your variety.');
       return;
     }
     setSubmitting(true);
@@ -68,10 +91,10 @@ export default function StandingOrderPanel() {
       const next = new Date(today);
       if (freq === 'weekly') next.setDate(today.getDate() + 7);
       else if (freq === 'biweekly') next.setDate(today.getDate() + 14);
-      else next.setMonth(today.getMonth() + 1);
+      else { next.setDate(1); next.setMonth(today.getMonth() + 1); }
 
-      await createStandingOrder({
-        sender_id: userDbId!,
+      const { client_secret } = await createStandingOrder({
+        sender_id: senderId,
         recipient_id: type === 'gift' ? selectedRecipient?.id : undefined,
         variety_id: order.variety_id!,
         chocolate: order.chocolate!,
@@ -83,9 +106,36 @@ export default function StandingOrderPanel() {
         next_order_date: next.toISOString().split('T')[0],
         gift_tone: type === 'gift' ? tone : undefined,
       });
-      Alert.alert('Standing order set.', `Your ${freq} order is confirmed.`, [
-        { text: 'Done', onPress: () => { goHome(); TrueSheet.present('main-sheet', 1); } },
-      ]);
+
+      if (!reviewMode) {
+        const email = await AsyncStorage.getItem('user_email');
+        const { error: initErr } = await initPaymentSheet({
+          merchantDisplayName: 'Maison Fraise',
+          paymentIntentClientSecret: client_secret,
+          defaultBillingDetails: { email: email ?? undefined },
+          appearance: {
+            colors: {
+              primary: c.accent,
+              background: '#FFFFFF',
+              componentBackground: '#F7F5F2',
+              componentText: '#1C1C1E',
+              componentBorder: '#E5E1DA',
+              placeholderText: '#8E8E93',
+            },
+          },
+        });
+        if (initErr) throw new Error(initErr.message);
+        TrueSheet.present('main-sheet', 0);
+        const { error: presentErr } = await presentPaymentSheet();
+        if (presentErr) {
+          setTimeout(() => TrueSheet.present('main-sheet', 1), 150);
+          if (presentErr.code === 'Canceled') { setSubmitting(false); return; }
+          throw new Error(presentErr.message);
+        }
+        setTimeout(() => TrueSheet.present('main-sheet', 2), 150);
+      }
+
+      setSuccess(true);
     } catch (err: unknown) {
       Alert.alert('Could not set up standing order', err instanceof Error ? err.message : 'Try again.');
     } finally {
@@ -93,10 +143,33 @@ export default function StandingOrderPanel() {
     }
   };
 
+  if (success) {
+    return (
+      <View style={[styles.container, styles.successContainer, { backgroundColor: c.panelBg }]}>
+        <Text style={[styles.successCheck, { color: c.accent }]}>✓</Text>
+        <Text style={[styles.successTitle, { color: c.text }]}>Standing order set.</Text>
+        <Text style={[styles.successSub, { color: c.muted }]}>
+          Your {freq} order starts {selectedFreq.desc.toLowerCase()}.
+        </Text>
+        <TouchableOpacity
+          style={[styles.confirmBtn, { backgroundColor: c.text, marginTop: SPACING.lg, paddingHorizontal: SPACING.xl }]}
+          onPress={goHome}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.confirmBtnText, { color: c.ctaText }]}>Done</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: c.panelBg }]}>
+      <View style={[styles.header, { borderBottomColor: c.border }]}>
+        <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
+          <Text style={[styles.backBtnText, { color: c.accent }]}>←</Text>
+        </TouchableOpacity>
         <Text style={[styles.title, { color: c.text }]}>Standing Order</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -189,9 +262,9 @@ export default function StandingOrderPanel() {
               ))}
             </View>
             <TouchableOpacity
-              style={[styles.previewBtn, { backgroundColor: c.card, borderColor: c.border }]}
+              style={[styles.previewBtn, { backgroundColor: c.card, borderColor: c.border }, (!selectedRecipient || noteLoading) && { opacity: 0.4 }]}
               onPress={handlePreview}
-              disabled={noteLoading}
+              disabled={!selectedRecipient || noteLoading}
               activeOpacity={0.8}
             >
               {noteLoading
@@ -212,11 +285,17 @@ export default function StandingOrderPanel() {
         <View style={[styles.totalCard, { backgroundColor: c.card, borderColor: c.border }]}>
           <View>
             <Text style={[styles.totalLabel, { color: c.muted }]}>TOTAL PREPAYMENT</Text>
-            <Text style={[styles.totalSub, { color: c.muted }]}>{selectedFreq.cycles} orders × CA${((order.price_cents ?? 0) * order.quantity / 100).toFixed(2)}</Text>
+            <Text style={[styles.totalSub, { color: c.muted }]}>
+              {priceCents !== null
+                ? `${selectedFreq.cycles} orders × CA${(priceCents * order.quantity / 100).toFixed(2)}`
+                : 'Pricing unavailable — return to order flow'}
+            </Text>
           </View>
-          <Text style={[styles.totalAmount, { color: c.text }]}>CA${(totalCents / 100).toFixed(2)}</Text>
+          <Text style={[styles.totalAmount, { color: c.text }]}>
+            {totalCents !== null ? `CA$${(totalCents / 100).toFixed(2)}` : '—'}
+          </Text>
         </View>
-        <View style={{ height: 100 }} />
+        <View style={{ height: SPACING.xl }} />
       </ScrollView>
 
       {!userDbId && (
@@ -224,18 +303,20 @@ export default function StandingOrderPanel() {
           <Text style={[styles.notSignedInText, { color: c.muted }]}>Sign in with Apple in your profile to set up standing orders.</Text>
         </View>
       )}
+      {userDbId && !isVerified && (
+        <View style={[styles.notSignedInBanner, { backgroundColor: c.cardDark }]}>
+          <Text style={[styles.notSignedInText, { color: c.muted }]}>Collect your first order and tap the NFC chip to unlock standing orders.</Text>
+        </View>
+      )}
 
-      <View style={[styles.footer, { borderTopColor: c.border }]}>
+      <View style={[styles.footer, { borderTopColor: c.border, paddingBottom: insets.bottom || SPACING.md }]}>
         <TouchableOpacity
-          style={[styles.confirmBtn, { backgroundColor: c.text }, (!userDbId || submitting) && styles.confirmBtnDisabled]}
+          style={[styles.confirmBtn, { backgroundColor: c.text }, (!userDbId || !isVerified || submitting) && styles.confirmBtnDisabled]}
           onPress={handleConfirm}
-          disabled={!userDbId || submitting}
+          disabled={!userDbId || !isVerified || submitting}
           activeOpacity={0.85}
         >
           <Text style={[styles.confirmBtnText, { color: c.ctaText }]}>{submitting ? 'Setting up...' : 'Confirm & Pay'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={goBack} activeOpacity={0.6} style={styles.backLink}>
-          <Text style={[styles.backLinkText, { color: c.accent }]}>Back</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -244,29 +325,32 @@ export default function StandingOrderPanel() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: SPACING.md, paddingTop: 8, paddingBottom: 12 },
-  title: { fontSize: 28, fontFamily: fonts.playfair },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingTop: 18, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth },
+  backBtn: { width: 40, paddingVertical: 4 },
+  backBtnText: { fontSize: 28, lineHeight: 34 },
+  headerSpacer: { width: 40 },
+  title: { flex: 1, textAlign: 'center', fontSize: 20, fontFamily: fonts.playfair },
   body: { padding: SPACING.md, gap: SPACING.md },
   sectionLabel: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1.8 },
   toggle: { flexDirection: 'row', borderRadius: 12, padding: 4, gap: 4 },
-  toggleOpt: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center' },
+  toggleOpt: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
   toggleOptActive: {},
   toggleText: { fontSize: 14, fontFamily: fonts.dmSans, fontWeight: '600' },
   card: { borderRadius: 14, padding: SPACING.md, gap: 8, borderWidth: StyleSheet.hairlineWidth },
   searchInput: { fontSize: 14, fontFamily: fonts.dmSans, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6 },
   resultRow: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   resultText: { fontSize: 14, fontFamily: fonts.dmMono, letterSpacing: 1 },
-  selectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  selectedRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   selectedText: { fontSize: 13, fontFamily: fonts.dmMono, fontWeight: '600' },
   clearText: { fontSize: 14 },
-  freqCard: { borderRadius: 14, padding: SPACING.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1.5 },
+  freqCard: { borderRadius: 14, padding: SPACING.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
   freqLabel: { fontSize: 16, fontFamily: fonts.playfair },
   freqDesc: { fontSize: 13, fontFamily: fonts.dmSans },
   timeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  timeChip: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1.5 },
+  timeChip: { borderRadius: 14, paddingHorizontal: 12, paddingVertical: 9, borderWidth: StyleSheet.hairlineWidth },
   timeText: { fontSize: 13, fontFamily: fonts.dmSans },
   toneRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  toneChip: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1.5 },
+  toneChip: { borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth },
   toneText: { fontSize: 13, fontFamily: fonts.dmSans },
   previewBtn: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
   previewBtnText: { fontSize: 14, fontFamily: fonts.playfair },
@@ -277,12 +361,14 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 11, fontFamily: fonts.dmMono, letterSpacing: 1.8, marginBottom: 3 },
   totalSub: { fontSize: 12, fontFamily: fonts.dmSans },
   totalAmount: { fontSize: 24, fontFamily: fonts.playfair },
-  footer: { padding: SPACING.md, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
+  footer: { padding: SPACING.md, borderTopWidth: StyleSheet.hairlineWidth },
   confirmBtn: { borderRadius: 16, paddingVertical: 20, alignItems: 'center' },
   confirmBtnDisabled: { opacity: 0.5 },
   confirmBtnText: { fontSize: 16, fontFamily: fonts.dmSans, fontWeight: '700' },
-  backLink: { alignItems: 'center', paddingVertical: 4 },
-  backLinkText: { fontSize: 15, fontFamily: fonts.dmSans },
   notSignedInBanner: { marginHorizontal: SPACING.md, marginBottom: 8, borderRadius: 12, padding: 12 },
   notSignedInText: { fontSize: 13, fontFamily: fonts.dmSans, textAlign: 'center', lineHeight: 20 },
+  successContainer: { alignItems: 'center', justifyContent: 'center' },
+  successCheck: { fontSize: 48, marginBottom: SPACING.md },
+  successTitle: { fontSize: 32, fontFamily: fonts.playfair, marginBottom: SPACING.sm },
+  successSub: { fontSize: 14, fontFamily: fonts.dmSans, textAlign: 'center' },
 });

@@ -8,6 +8,7 @@ import {
   timestamp,
   date,
   decimal,
+  jsonb,
 } from 'drizzle-orm/pg-core';
 
 export const chocolateEnum = pgEnum('chocolate', [
@@ -111,6 +112,7 @@ export const orders = pgTable('orders', {
   quantity: integer('quantity').notNull(),
   is_gift: boolean('is_gift').notNull().default(false),
   total_cents: integer('total_cents').notNull(),
+  apple_id: text('apple_id'),
   stripe_payment_intent_id: text('stripe_payment_intent_id'),
   status: orderStatusEnum('status').notNull().default('pending'),
   customer_email: text('customer_email').notNull(),
@@ -126,9 +128,12 @@ export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   apple_user_id: text('apple_user_id').unique(),
   email: text('email').notNull().unique(),
+  display_name: text('display_name'),
+  push_token: text('push_token'),
   verified: boolean('verified').notNull().default(false),
   verified_at: timestamp('verified_at'),
   verified_by: text('verified_by'),
+  is_dj: boolean('is_dj').notNull().default(false),
   photographed: boolean('photographed').notNull().default(false),
   campaign_interest: boolean('campaign_interest').notNull().default(false),
   created_at: timestamp('created_at').notNull().defaultNow(),
@@ -137,7 +142,7 @@ export const users = pgTable('users', {
 export const businesses = pgTable('businesses', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type').notNull(),
+  type: text('type').notNull(), // 'collection' | 'partner' | 'popup'
   address: text('address').notNull(),
   city: text('city').notNull(),
   hours: text('hours'),
@@ -145,6 +150,22 @@ export const businesses = pgTable('businesses', {
   latitude: decimal('latitude', { precision: 10, scale: 7 }),
   longitude: decimal('longitude', { precision: 10, scale: 7 }),
   launched_at: timestamp('launched_at').notNull(),
+  // Partner / popup enrichment
+  description: text('description'),
+  instagram_handle: text('instagram_handle'),
+  neighbourhood: text('neighbourhood'),
+  // Popup-specific fields
+  starts_at: timestamp('starts_at'),
+  ends_at: timestamp('ends_at'),
+  dj_name: text('dj_name'),
+  organizer_note: text('organizer_note'),
+  capacity: integer('capacity'),
+  entrance_fee_cents: integer('entrance_fee_cents'),
+  is_audition: boolean('is_audition').notNull().default(false),
+  audition_status: text('audition_status'), // null | 'pending' | 'passed' | 'failed'
+  partner_business_id: integer('partner_business_id'), // collaborating partner venue
+  host_user_id: integer('host_user_id'),               // user who hosts the popup
+  checkin_token: text('checkin_token'),                 // NFC check-in token for this popup
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -211,5 +232,75 @@ export const legitimacyEvents = pgTable('legitimacy_events', {
   weight: integer('weight').notNull(),
   business_id: integer('business_id')
     .references(() => businesses.id),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+// ─── Popup system ────────────────────────────────────────────────────────────
+
+export const popupRsvps = pgTable('popup_rsvps', {
+  id: serial('id').primaryKey(),
+  popup_id: integer('popup_id').notNull().references(() => businesses.id),
+  user_id: integer('user_id').notNull().references(() => users.id),
+  stripe_payment_intent_id: text('stripe_payment_intent_id'),
+  status: text('status').notNull().default('pending'), // 'pending' | 'paid' | 'cancelled'
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const popupCheckins = pgTable('popup_checkins', {
+  id: serial('id').primaryKey(),
+  popup_id: integer('popup_id').notNull().references(() => businesses.id),
+  user_id: integer('user_id').notNull().references(() => users.id),
+  nfc_token: text('nfc_token'),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const popupNominations = pgTable('popup_nominations', {
+  id: serial('id').primaryKey(),
+  popup_id: integer('popup_id').notNull().references(() => businesses.id),
+  nominator_id: integer('nominator_id').notNull().references(() => users.id),
+  nominee_id: integer('nominee_id').notNull().references(() => users.id),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const djOffers = pgTable('dj_offers', {
+  id: serial('id').primaryKey(),
+  popup_id: integer('popup_id').notNull().references(() => businesses.id),
+  dj_user_id: integer('dj_user_id').notNull().references(() => users.id),
+  status: text('status').notNull().default('pending'), // 'pending' | 'accepted' | 'passed'
+  allocation_boxes: integer('allocation_boxes').notNull().default(0),
+  organizer_note: text('organizer_note'),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const portraits = pgTable('portraits', {
+  id: serial('id').primaryKey(),
+  business_id: integer('business_id').notNull().references(() => businesses.id),
+  image_url: text('image_url').notNull(),
+  subject_name: text('subject_name'),
+  season: text('season'),
+  campaign_title: text('campaign_title'),
+  sort_order: integer('sort_order').notNull().default(0),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const campaignCommissions = pgTable('campaign_commissions', {
+  id: serial('id').primaryKey(),
+  popup_id: integer('popup_id').notNull().references(() => businesses.id),
+  commissioner_user_id: integer('commissioner_user_id').notNull().references(() => users.id),
+  stripe_payment_intent_id: text('stripe_payment_intent_id'),
+  invited_user_ids: jsonb('invited_user_ids').$type<number[]>().notNull().default([]),
+  status: text('status').notNull().default('pending'), // 'pending' | 'paid'
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const popupRequests = pgTable('popup_requests', {
+  id: serial('id').primaryKey(),
+  user_id: integer('user_id').notNull().references(() => users.id),
+  venue_id: integer('venue_id').notNull().references(() => businesses.id),
+  requested_date: text('requested_date').notNull(),
+  requested_time: text('requested_time').notNull(),
+  notes: text('notes'),
+  stripe_payment_intent_id: text('stripe_payment_intent_id'),
+  status: text('status').notNull().default('pending'), // 'pending' | 'paid' | 'approved' | 'rejected'
   created_at: timestamp('created_at').notNull().defaultNow(),
 });

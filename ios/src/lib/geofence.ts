@@ -46,10 +46,3 @@ export async function registerGeofences(locations: GeofenceLocation[]): Promise<
 
   await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
 }
-
-export async function stopGeofences(): Promise<void> {
-  const isRegistered = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK);
-  if (isRegistered) {
-    await Location.stopGeofencingAsync(GEOFENCE_TASK);
-  }
-}

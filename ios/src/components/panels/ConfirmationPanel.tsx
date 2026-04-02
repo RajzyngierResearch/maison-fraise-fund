@@ -1,13 +1,39 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { TrueSheet } from '@lodev09/react-native-true-sheet';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Share } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePanel } from '../../context/PanelContext';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
+import * as Location from 'expo-location';
+import { registerGeofences } from '../../lib/geofence';
 
 export default function ConfirmationPanel() {
-  const { goHome, showPanel, order } = usePanel();
+  const { goHome, showPanel, jumpToPanel, order, businesses } = usePanel();
   const c = useColors();
+  const [isVerified, setIsVerified] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    AsyncStorage.getItem('verified').then(v => setIsVerified(v === 'true'));
+    if (businesses.length > 0) {
+      // Only request background permission if not already granted
+      Location.getBackgroundPermissionsAsync().then(({ status }) => {
+        if (status === 'granted') {
+          registerGeofences(businesses);
+        } else {
+          Location.requestBackgroundPermissionsAsync()
+            .then(() => registerGeofences(businesses))
+            .catch(() => {});
+        }
+      }).catch(() => {});
+    }
+  }, []);
+
+  const handleShareOrder = () => {
+    if (!order.order_id) return;
+    Share.share({ message: `Maison Fraise — Order #${order.order_id}` });
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
@@ -21,24 +47,16 @@ export default function ConfirmationPanel() {
         <View style={[styles.card, { backgroundColor: c.card, borderColor: c.border }]}>
           <View style={styles.cardRow}>
             <Text style={[styles.cardLabel, { color: c.muted }]}>ORDER</Text>
-            <Text style={[styles.cardValue, { color: c.text }]}>#{order.order_id}</Text>
+            <TouchableOpacity onLongPress={handleShareOrder} activeOpacity={0.7}>
+              <Text style={[styles.cardValue, { color: c.text }]}>#{order.order_id}</Text>
+              <Text style={[styles.shareHint, { color: c.muted }]}>Hold to share</Text>
+            </TouchableOpacity>
           </View>
           <View style={[styles.divider, { backgroundColor: c.border }]} />
           <View style={styles.cardRow}>
             <Text style={[styles.cardLabel, { color: c.muted }]}>TOTAL</Text>
             <Text style={[styles.cardValue, { color: c.text }]}>CA${((order.total_cents ?? 0) / 100).toFixed(2)}</Text>
           </View>
-        </View>
-
-        <View style={[styles.pickupCard, { backgroundColor: c.card, borderColor: c.border }]}>
-          <Text style={[styles.pickupTitle, { color: c.text }]}>What to expect</Text>
-          <Text style={[styles.pickupBody, { color: c.muted }]}>
-            {'Look for us at '}
-            <Text style={{ color: c.text }}>{order.location_name ?? 'your collection point'}</Text>
-            {'. Your order will be ready at '}
-            <Text style={{ color: c.text }}>{order.time_slot_time ?? 'your selected time'}</Text>
-            {'. Have your phone out — tap the NFC chip inside your box lid to verify membership.'}
-          </Text>
         </View>
 
         {order.nfc_token && (
@@ -55,19 +73,21 @@ export default function ConfirmationPanel() {
           </View>
         )}
 
-        <TouchableOpacity
-          style={[styles.standingBtn, { backgroundColor: c.card, borderColor: c.border }]}
-          onPress={() => showPanel('standingOrder')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.standingBtnText, { color: c.accent }]}>Make this a standing order</Text>
-        </TouchableOpacity>
+        {isVerified && (
+          <TouchableOpacity
+            style={[styles.standingBtn, { backgroundColor: c.card, borderColor: c.border }]}
+            onPress={() => jumpToPanel('standingOrder')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.standingBtnText, { color: c.accent }]}>Make this a standing order</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <View style={[styles.footer, { borderTopColor: c.border }]}>
+      <View style={[styles.footer, { borderTopColor: c.border, paddingBottom: insets.bottom || SPACING.md }]}>
         <TouchableOpacity
           style={[styles.doneBtn, { backgroundColor: c.text }]}
-          onPress={() => { goHome(); TrueSheet.present('main-sheet', 1); }}
+          onPress={goHome}
           activeOpacity={0.8}
         >
           <Text style={[styles.doneBtnText, { color: c.ctaText }]}>Done</Text>
@@ -79,7 +99,7 @@ export default function ConfirmationPanel() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  body: { flex: 1, padding: SPACING.md, gap: SPACING.md, alignItems: 'center', paddingTop: 32 },
+  body: { flex: 1, padding: SPACING.md, gap: SPACING.md, alignItems: 'center', justifyContent: 'center' },
   checkCircle: {
     width: 72, height: 72, borderRadius: 36,
     borderWidth: StyleSheet.hairlineWidth,
@@ -89,9 +109,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 32, fontFamily: fonts.playfair },
   subtitle: { fontSize: 14, fontFamily: fonts.dmSans },
   card: { borderRadius: 14, width: '100%', overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: SPACING.md, paddingVertical: 12 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingHorizontal: SPACING.md, paddingVertical: 12 },
   cardLabel: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1.5 },
-  cardValue: { fontSize: 15, fontFamily: fonts.playfair },
+  cardValue: { fontSize: 15, fontFamily: fonts.playfair, textAlign: 'right' },
+  shareHint: { fontSize: 10, fontFamily: fonts.dmSans, textAlign: 'right', marginTop: 2 },
   divider: { height: StyleSheet.hairlineWidth, marginHorizontal: SPACING.md },
   nfcCard: { borderRadius: 14, padding: SPACING.md, width: '100%', gap: 8, borderWidth: StyleSheet.hairlineWidth },
   nfcTitle: { fontSize: 15, fontFamily: fonts.playfair },
@@ -100,9 +121,6 @@ const styles = StyleSheet.create({
   nfcBtnText: { color: '#fff', fontSize: 13, fontFamily: fonts.dmSans, fontWeight: '600' },
   standingBtn: { borderRadius: 14, padding: SPACING.md, width: '100%', alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
   standingBtnText: { fontSize: 14, fontFamily: fonts.playfair },
-  pickupCard: { borderRadius: 14, padding: SPACING.md, gap: 8, borderWidth: StyleSheet.hairlineWidth, width: '100%' },
-  pickupTitle: { fontSize: 15, fontFamily: fonts.playfair },
-  pickupBody: { fontSize: 13, fontFamily: fonts.dmSans, lineHeight: 22 },
   footer: { padding: SPACING.md, borderTopWidth: StyleSheet.hairlineWidth },
   doneBtn: { borderRadius: 16, paddingVertical: 20, alignItems: 'center' },
   doneBtnText: { fontSize: 16, fontFamily: fonts.dmSans, fontWeight: '700' },

@@ -1,195 +1,204 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  View, Text, TouchableOpacity, TextInput, ScrollView,
-  StyleSheet, ActivityIndicator, Keyboard, Alert,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { usePanel } from '../../context/PanelContext';
-import { TrueSheet } from '@lodev09/react-native-true-sheet';
-import { fetchBusinesses, fetchVarieties, fetchOrdersByEmail } from '../../lib/api';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { usePanel, Variety } from '../../context/PanelContext';
+import { fetchVarieties } from '../../lib/api';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
-import { STRAWBERRIES, getDateOptions } from '../../data/seed';
+import { STRAWBERRIES } from '../../data/seed';
 
-const SHORTCUTS = [
-  { label: 'Order again', icon: '↩' },
-  { label: 'Ready now', icon: '🍓' },
-  { label: 'Gift', icon: '◇' },
-] as const;
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+function freshnessLabel(level?: number): string {
+  if (!level) return 'Last chance';
+  if (level >= 0.8) return '旬';
+  if (level >= 0.5) return 'Good';
+  return 'Last chance';
+}
 
 export default function HomePanel() {
-  const { showPanel, setVarieties, setOrder, setBusinesses, setActiveLocation, businesses, varieties, sheetHeight } = usePanel();
+  const { showPanel, setVarieties, setOrder, setActiveLocation, varieties, activeLocation, sheetHeight, businesses } = usePanel();
   const c = useColors();
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState('');
-  const [giftActive, setGiftActive] = useState(false);
-  const [readyNowActive, setReadyNowActive] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const [fetchError, setFetchError] = useState(false);
+  const isCollapsed = sheetHeight < 110;
+  const hasFetched = useRef(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  const collectionPoints = businesses.filter(b => b.type === 'collection');
-  const isCollapsed = sheetHeight > 0 && sheetHeight < 120;
+  const now = new Date();
+  const locations = businesses.filter((b: any) => {
+    if (b.type === 'collection') return true;
+    if (b.type === 'popup') {
+      if (!b.launched_at) return false;
+      // Keep popup if its day hasn't fully passed (allow until end of that day)
+      const d = new Date(b.launched_at);
+      d.setHours(23, 59, 59, 999);
+      return d >= now;
+    }
+    return false;
+  });
+  const singleLocation = locations.length === 1;
+
+  const todayLabel = now.toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' });
+  const month = now.getMonth() + 1;
+  const seasonKanji = month >= 3 && month <= 5 ? '春'
+    : month >= 6 && month <= 8 ? '夏'
+    : month >= 9 && month <= 11 ? '秋'
+    : '冬';
 
   useEffect(() => {
-    Promise.all([
-      fetchBusinesses(),
-      fetchVarieties(),
-    ]).then(([biz, vars]) => {
-      setBusinesses(biz);
-      const merged = vars.map((v: any) => {
-        const seed = STRAWBERRIES.find(s => s.name === v.name);
-        return { ...seed, ...v };
-      });
-      setVarieties(merged);
-    }).catch(() => {}).finally(() => setLoading(false));
+    if (expandedId !== null) return;
+    if (activeLocation) {
+      setExpandedId(activeLocation.id);
+    } else {
+      const first = locations.find((b: any) => b.type === 'collection');
+      if (first) setExpandedId(first.id);
+    }
+  }, [activeLocation?.id, businesses.length]);
 
-    const hide = Keyboard.addListener('keyboardWillHide', () => {
-      TrueSheet.present('main-sheet', 1);
-    });
-    return () => hide.remove();
-  }, []);
-
-  const handleFocus = () => {
-    Keyboard.dismiss();
-    showPanel('ask');
-    TrueSheet.present('main-sheet', 2);
+  const loadVarieties = () => {
+    if (hasFetched.current || varieties.length > 0) { setLoading(false); return; }
+    hasFetched.current = true;
+    setFetchError(false);
+    setLoading(true);
+    fetchVarieties()
+      .then((vars: any[]) => {
+        const merged = vars.map((v: any) => {
+          const seed = STRAWBERRIES.find(s => s.name === v.name);
+          return { ...(seed ?? {}), ...v };
+        });
+        setVarieties(merged);
+      })
+      .catch(() => { hasFetched.current = false; setFetchError(true); })
+      .finally(() => setLoading(false));
   };
 
-  const handleOrderAgain = async () => {
-    const email = await AsyncStorage.getItem('user_email');
-    if (!email) {
-      Alert.alert('Sign in first', 'Use the profile button to sign in, then your order history will be available here.');
-      return;
-    }
-    try {
-      const orders = await fetchOrdersByEmail(email);
-      const paid = (orders as any[]).filter((o: any) => o.status === 'paid');
-      if (paid.length === 0) {
-        Alert.alert('No orders yet', 'Your first completed order will appear here.');
-        return;
-      }
-      const last = paid[paid.length - 1];
-      const matchedVariety = varieties.find(v => v.id === last.variety_id);
-      const matchedBusiness = businesses.find(b => b.id === last.location_id);
-      setOrder({
-        variety_id: last.variety_id ?? null,
-        variety_name: last.variety_name ?? matchedVariety?.name ?? null,
-        price_cents: last.price_cents ?? matchedVariety?.price_cents ?? null,
-        chocolate: last.chocolate ?? null,
-        chocolate_name: last.chocolate ?? null,
-        finish: last.finish ?? null,
-        finish_name: last.finish ?? null,
-        quantity: last.quantity ?? 4,
-        is_gift: last.is_gift ?? false,
-        location_id: last.location_id ?? null,
-        location_name: matchedBusiness?.name ?? null,
-      });
-      showPanel('when');
-      TrueSheet.present('main-sheet', 2);
-    } catch {
-      Alert.alert('Could not load orders', 'Please try again.');
-    }
+  useEffect(() => { loadVarieties(); }, []);
+
+  const handleLocationToggle = (biz: any) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedId(prev => prev === biz.id ? null : biz.id);
   };
 
-  const handleShortcut = (label: string) => {
-    if (label === 'Gift') {
-      const next = !giftActive;
-      setGiftActive(next);
-      setOrder({ is_gift: next });
-      TrueSheet.present('main-sheet', 2);
-    } else if (label === 'Ready now') {
-      const next = !readyNowActive;
-      setReadyNowActive(next);
-      setOrder({ date: next ? getDateOptions()[0].isoDate : null, time_slot_id: null, time_slot_time: null });
-      TrueSheet.present('main-sheet', 2);
-    } else if (label === 'Order again') {
-      handleOrderAgain();
-    }
-  };
-
-  const handleLocationPress = (biz: any) => {
+  const handleVarietyPress = (v: Variety, biz: any) => {
+    Haptics.selectionAsync();
     setActiveLocation(biz);
-    setOrder({ location_id: biz.id, location_name: biz.name });
-    showPanel('location');
-    TrueSheet.present('main-sheet', 2);
+    setOrder({
+      variety_id: v.id,
+      variety_name: v.name,
+      price_cents: v.price_cents,
+      location_id: biz.id,
+      location_name: biz.name,
+    });
+    showPanel('chocolate');
+  };
+
+  const renderVarieties = (biz: any) => {
+    if (loading) return <ActivityIndicator color={c.accent} style={{ marginVertical: 24 }} />;
+    if (fetchError) return (
+      <TouchableOpacity onPress={loadVarieties} style={{ paddingVertical: 20, alignItems: 'center' }} activeOpacity={0.7}>
+        <Text style={[styles.emptyText, { color: c.muted }]}>Could not load. Tap to retry.</Text>
+      </TouchableOpacity>
+    );
+    // Filter by location if the API returns location-scoped varieties; fall back to all
+    const hasLocationData = varieties.some(v => v.location_id != null);
+    const bizVarieties = hasLocationData ? varieties.filter(v => v.location_id === biz.id) : varieties;
+    if (bizVarieties.length === 0) return (
+      <Text style={[styles.emptyText, { color: c.muted, paddingVertical: 20 }]}>Nothing ready today.</Text>
+    );
+    return bizVarieties.map(v => {
+      const freshColor = v.freshnessColor ?? c.accent;
+      const label = freshnessLabel(v.freshnessLevel);
+      const stockLow = v.stock_remaining <= 3;
+      return (
+        <TouchableOpacity
+          key={v.id}
+          style={[styles.varietyRow, { borderTopColor: c.border }]}
+          onPress={() => handleVarietyPress(v, biz)}
+          activeOpacity={0.75}
+        >
+          <View style={styles.rowMain}>
+            <Text style={[styles.varietyName, { color: c.text }]}>{v.name}</Text>
+            <View style={styles.meta}>
+              {v.farm && <Text style={[styles.farm, { color: c.muted }]}>{v.farm}</Text>}
+              <View style={[styles.freshDot, { backgroundColor: freshColor }]} />
+              <Text style={[styles.freshLabel, { color: freshColor }]}>{label}</Text>
+            </View>
+          </View>
+          <View style={styles.rowRight}>
+            <Text style={[styles.price, { color: c.text }]}>CA${(v.price_cents / 100).toFixed(2)}</Text>
+            <Text style={[styles.stock, { color: stockLow ? '#FF3B30' : c.muted }]}>
+              {stockLow ? 'Almost gone' : `${v.stock_remaining} left`}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      );
+    });
   };
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
-      {/* Search bar + profile — visible at all detents */}
-      <View style={styles.searchRow}>
-        <TextInput
-          ref={inputRef}
-          style={[styles.searchBar, { backgroundColor: c.searchBg, borderColor: c.searchBorder, color: c.text }]}
-          placeholder="Maison Fraise"
-          placeholderTextColor={c.text}
-          value={query}
-          onChangeText={setQuery}
-          onFocus={handleFocus}
-          returnKeyType="done"
-          onSubmitEditing={() => Keyboard.dismiss()}
-        />
-        <TouchableOpacity
-          onPress={() => { showPanel('profile'); TrueSheet.present('main-sheet', 1); }}
-          activeOpacity={0.7}
-          style={[styles.profileBtn, { backgroundColor: c.searchBg, borderColor: c.searchBorder }]}
-        >
-          <Text style={[styles.profileIcon, { color: c.muted }]}>⊙</Text>
-        </TouchableOpacity>
+      <View style={[styles.brandRow, { borderBottomColor: c.border }, !isCollapsed && styles.brandRowBorder]}>
+        <View style={styles.brandInner}>
+          <Text style={[styles.brandName, { color: c.text }]}>Maison Fraise</Text>
+          {!isCollapsed && <Text style={[styles.brandDate, { color: c.muted }]}>{todayLabel}</Text>}
+        </View>
+        {!isCollapsed && <Text style={[styles.seasonKanji, { color: c.border }]}>{seasonKanji}</Text>}
       </View>
 
       {!isCollapsed && (
-        <>
-          {/* Shortcuts */}
-          <View style={styles.shortcutRow}>
-            {SHORTCUTS.map(s => {
-              const isGiftActive = s.label === 'Gift' && giftActive;
-              const isActive = isGiftActive || (s.label === 'Ready now' && readyNowActive);
-              return (
-                <TouchableOpacity
-                  key={s.label}
-                  style={[
-                    styles.shortcutCard,
-                    { backgroundColor: c.card, borderColor: c.border },
-                    isActive && { backgroundColor: c.accent, borderColor: 'transparent' },
-                  ]}
-                  onPress={() => handleShortcut(s.label)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.shortcutIcon}>{s.icon}</Text>
-                  <Text style={[styles.shortcutLabel, { color: isActive ? '#fff' : c.text }]}>{s.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+          {locations.length === 0 && (
+            <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
+          )}
+          {locations.length > 0 && expandedId === null && !singleLocation && (
+            <Text style={[styles.emptyText, { color: c.muted, marginTop: 40 }]}>Select a location above.</Text>
+          )}
+          {locations.map((biz: any) => {
+            const isExpanded = singleLocation || expandedId === biz.id;
+            const isPopup = biz.type === 'popup';
+            const popupDate = isPopup && biz.launched_at
+              ? (biz.hours ?? new Date(biz.launched_at).toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' }))
+              : null;
 
-          {/* Collection locations */}
-          <Text style={[styles.sectionLabel, { color: c.muted }]}>COLLECTION POINTS</Text>
-
-          <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-            {loading ? (
-              <ActivityIndicator color={c.accent} style={{ marginTop: 32 }} />
-            ) : collectionPoints.length === 0 ? (
-              <Text style={[styles.emptyText, { color: c.muted }]}>No collection points available.</Text>
-            ) : (
-              collectionPoints.map(biz => (
-                <TouchableOpacity
-                  key={biz.id}
-                  style={[styles.locationRow, { borderBottomColor: c.border }]}
-                  onPress={() => handleLocationPress(biz)}
-                  activeOpacity={0.75}
-                >
-                  <View style={[styles.locationDot, { backgroundColor: c.accent }]} />
-                  <View style={styles.locationInfo}>
-                    <Text style={[styles.locationName, { color: c.text }]}>{biz.name}</Text>
-                    <Text style={[styles.locationAddress, { color: c.muted }]}>{biz.address}</Text>
+            return (
+              <View key={biz.id}>
+                {singleLocation ? (
+                  // Single location: non-interactive label row
+                  <View style={[styles.locationRow, styles.locationRowExpanded, { borderBottomColor: c.border }]}>
+                    <View style={styles.locationMain}>
+                      {isPopup && <Text style={[styles.popupBadge, { color: '#C0392B' }]}>POPUP</Text>}
+                      <Text style={[styles.locationName, { color: c.text }]}>{biz.name}</Text>
+                      {popupDate && <Text style={[styles.locationDate, { color: c.muted }]}>{popupDate}</Text>}
+                    </View>
                   </View>
-                  <Text style={[styles.locationChevron, { color: c.muted }]}>›</Text>
-                </TouchableOpacity>
-              ))
-            )}
-            <View style={{ height: 32 }} />
-          </ScrollView>
-        </>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.locationRow, { borderBottomColor: c.border }, isExpanded && styles.locationRowExpanded]}
+                    onPress={() => handleLocationToggle(biz)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={styles.locationMain}>
+                      {isPopup && <Text style={[styles.popupBadge, { color: '#C0392B' }]}>POPUP</Text>}
+                      <Text style={[styles.locationName, { color: c.text }]}>{biz.name}</Text>
+                      {popupDate && <Text style={[styles.locationDate, { color: c.muted }]}>{popupDate}</Text>}
+                    </View>
+                    <Text style={[styles.locationChevron, { color: c.muted }, isExpanded && styles.locationChevronOpen]}>›</Text>
+                  </TouchableOpacity>
+                )}
+
+                {isExpanded && (
+                  <View style={[styles.varietyBlock, { borderBottomColor: c.border }]}>
+                    {renderVarieties(biz)}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+          <View style={{ height: 32 }} />
+        </ScrollView>
       )}
     </View>
   );
@@ -197,65 +206,60 @@ export default function HomePanel() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  searchRow: {
-    flexDirection: 'row',
+  brandRow: {
+    height: 72,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    gap: 10,
   },
-  searchBar: {
-    flex: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    fontSize: 16,
-    fontFamily: fonts.playfairItalic,
+  brandRowBorder: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  profileBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0,
+  brandInner: { alignItems: 'center', justifyContent: 'center' },
+  brandName: {
+    fontSize: 20,
+    fontFamily: fonts.playfair,
   },
-  profileIcon: { fontSize: 18 },
-  shortcutRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.md,
-    paddingBottom: 16,
-    gap: 8,
-  },
-  shortcutCard: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  shortcutIcon: { fontSize: 20 },
-  shortcutLabel: { fontSize: 11, fontFamily: fonts.dmSans, textAlign: 'center' },
-  sectionLabel: {
-    fontSize: 10,
-    fontFamily: fonts.dmMono,
-    letterSpacing: 1.5,
-    paddingHorizontal: SPACING.md,
-    paddingBottom: 8,
-  },
+  brandDate: { fontSize: 11, fontFamily: fonts.dmMono, letterSpacing: 0.5, marginTop: 3 },
+  seasonKanji: { fontSize: 28, position: 'absolute', right: SPACING.md },
   list: { flex: 1 },
-  emptyText: { fontSize: 15, fontFamily: fonts.dmSans, textAlign: 'center', marginTop: 32, fontStyle: 'italic' },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 20,
+    paddingVertical: 18,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 14,
+    gap: 12,
   },
-  locationDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
-  locationInfo: { flex: 1, gap: 4 },
+  locationRowExpanded: {
+    borderBottomWidth: 0,
+  },
+  locationMain: { flex: 1, gap: 3 },
+  popupBadge: { fontSize: 9, fontFamily: fonts.dmMono, letterSpacing: 1.5 },
   locationName: { fontSize: 18, fontFamily: fonts.playfair },
-  locationAddress: { fontSize: 12, fontFamily: fonts.dmSans },
+  locationDate: { fontSize: 12, fontFamily: fonts.dmSans },
   locationChevron: { fontSize: 22 },
+  locationChevronOpen: { transform: [{ rotate: '90deg' }] },
+  varietyBlock: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  varietyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 18,
+    paddingLeft: SPACING.md + 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  rowMain: { flex: 1, gap: 6 },
+  varietyName: { fontSize: 17, fontFamily: fonts.playfair },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  farm: { fontSize: 11, fontFamily: fonts.dmMono },
+  freshDot: { width: 6, height: 6, borderRadius: 3 },
+  freshLabel: { fontSize: 11, fontFamily: fonts.dmMono },
+  rowRight: { alignItems: 'flex-end', gap: 4 },
+  price: { fontSize: 15, fontFamily: fonts.dmMono },
+  stock: { fontSize: 11, fontFamily: fonts.dmSans },
+  emptyText: { fontSize: 15, fontFamily: fonts.dmSans, textAlign: 'center', fontStyle: 'italic' },
 });

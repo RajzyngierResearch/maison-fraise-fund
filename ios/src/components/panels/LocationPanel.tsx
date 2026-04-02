@@ -1,12 +1,29 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { usePanel, Variety } from '../../context/PanelContext';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
 
 export default function LocationPanel() {
-  const { goBack, showPanel, setOrder, activeLocation, varieties } = usePanel();
+  const { goBack, showPanel, setOrder, setActiveLocation, activeLocation, varieties, businesses, order } = usePanel();
   const c = useColors();
+
+  const doLocationSwitch = (biz: any) => {
+    setActiveLocation(biz);
+    setOrder({ location_id: biz.id, location_name: biz.name, variety_id: null, variety_name: null, price_cents: null, chocolate: null, chocolate_name: null, finish: null, finish_name: null, date: null, time_slot_id: null, time_slot_time: null });
+  };
+
+  const handleLocationSwitch = (biz: any) => {
+    if (biz.id === activeLocation?.id) return;
+    if (order.variety_id) {
+      Alert.alert('Restart order?', 'Switching location will clear your current selection.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Switch', style: 'destructive', onPress: () => doLocationSwitch(biz) },
+      ]);
+      return;
+    }
+    doLocationSwitch(biz);
+  };
 
   const handleVarietyPress = (v: Variety) => {
     setOrder({
@@ -14,8 +31,13 @@ export default function LocationPanel() {
       variety_name: v.name,
       price_cents: v.price_cents,
     });
-    showPanel('variety');
+    showPanel('chocolate');
   };
+
+  const isPopup = activeLocation?.type === 'popup';
+  const popupDate = isPopup && activeLocation?.launched_at
+    ? (activeLocation.hours ?? new Date(activeLocation.launched_at).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' }))
+    : null;
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
@@ -23,14 +45,19 @@ export default function LocationPanel() {
         <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={[styles.backBtnText, { color: c.accent }]}>←</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: c.text }]}>{activeLocation?.name ?? '—'}</Text>
-        {activeLocation?.address && (
-          <Text style={[styles.address, { color: c.muted }]}>{activeLocation.address}</Text>
-        )}
+        <View style={styles.headerCenter}>
+          {isPopup && <Text style={[styles.headerBadge, { color: '#C0392B' }]}>POPUP</Text>}
+          <Text style={[styles.title, { color: c.text }]} numberOfLines={1}>{activeLocation?.name ?? '—'}</Text>
+          {popupDate && <Text style={[styles.headerDate, { color: c.muted }]}>{popupDate}</Text>}
+        </View>
+        <View style={styles.headerSpacer} />
       </View>
+      {!isPopup && activeLocation?.address && (
+        <Text style={[styles.address, { color: c.muted }]}>{activeLocation.address}</Text>
+      )}
 
       <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.sectionLabel, { color: c.muted }]}>AVAILABLE TODAY</Text>
+        <Text style={[styles.sectionLabel, { color: c.muted }]}>{isPopup ? 'AVAILABLE AT THIS POPUP' : 'AVAILABLE TODAY'}</Text>
         {varieties.length === 0 ? (
           <Text style={[styles.emptyText, { color: c.muted }]}>Nothing ready today.</Text>
         ) : (
@@ -44,8 +71,8 @@ export default function LocationPanel() {
               <View style={[styles.varietyDot, { backgroundColor: c.accent }]} />
               <View style={styles.varietyInfo}>
                 <Text style={[styles.varietyName, { color: c.text }]}>{v.name}</Text>
-                {(v as any).farm && (
-                  <Text style={[styles.varietyFarm, { color: c.muted }]}>{(v as any).farm}</Text>
+                {v.farm && (
+                  <Text style={[styles.varietyFarm, { color: c.muted }]}>{v.farm}</Text>
                 )}
               </View>
               <View style={styles.varietyRight}>
@@ -59,7 +86,7 @@ export default function LocationPanel() {
             </TouchableOpacity>
           ))
         )}
-        <View style={{ height: 32 }} />
+        <View style={{ height: SPACING.xl }} />
       </ScrollView>
     </View>
   );
@@ -68,15 +95,21 @@ export default function LocationPanel() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingTop: 8,
-    paddingBottom: 16,
+    paddingTop: 18,
+    paddingBottom: 18,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  backBtn: { paddingVertical: 4, marginBottom: 4 },
-  backBtnText: { fontSize: 22, lineHeight: 28 },
-  title: { fontSize: 32, fontFamily: fonts.playfair },
-  address: { fontSize: 13, fontFamily: fonts.dmSans, marginTop: 2 },
+  backBtn: { width: 40, paddingVertical: 4 },
+  backBtnText: { fontSize: 28, lineHeight: 34 },
+  headerCenter: { flex: 1, alignItems: 'center', gap: 2 },
+  headerBadge: { fontSize: 9, fontFamily: fonts.dmMono, letterSpacing: 1.5 },
+  title: { fontSize: 20, fontFamily: fonts.playfair, textAlign: 'center' },
+  headerDate: { fontSize: 13, fontFamily: fonts.dmSans },
+  headerSpacer: { width: 40 },
+  address: { fontSize: 13, fontFamily: fonts.dmSans, textAlign: 'center', paddingTop: 4, paddingBottom: 4, paddingHorizontal: SPACING.md },
   sectionLabel: {
     fontSize: 10,
     fontFamily: fonts.dmMono,

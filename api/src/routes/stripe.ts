@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { stripe } from '../lib/stripe';
 import { db } from '../db';
-import { orders } from '../db/schema';
+import { orders, popupRsvps, popupRequests, campaignCommissions } from '../db/schema';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -33,24 +33,61 @@ router.post('/webhook', async (req: Request, res: Response) => {
   try {
     if (event.type === 'payment_intent.succeeded') {
       const pi = event.data.object as Stripe.PaymentIntent;
-      const [order] = await db
-        .select()
-        .from(orders)
-        .where(eq(orders.stripe_payment_intent_id, pi.id));
+      const type = pi.metadata?.type;
 
-      // Only mark paid if still pending — inventory is handled by /confirm endpoint
-      if (order && order.status === 'pending') {
-        await db.update(orders).set({ status: 'paid' }).where(eq(orders.id, order.id));
-        logger.info(`Order ${order.id} marked paid via webhook`);
+      if (!type || type === 'order') {
+        // Legacy order flow
+        const [order] = await db
+          .select()
+          .from(orders)
+          .where(eq(orders.stripe_payment_intent_id, pi.id));
+        if (order && order.status === 'pending') {
+          await db.update(orders).set({ status: 'paid' }).where(eq(orders.id, order.id));
+          logger.info(`Order ${order.id} marked paid via webhook`);
+        }
+      } else if (type === 'popup_rsvp') {
+        const [rsvp] = await db
+          .select()
+          .from(popupRsvps)
+          .where(eq(popupRsvps.stripe_payment_intent_id, pi.id));
+        if (rsvp && rsvp.status === 'pending') {
+          await db.update(popupRsvps).set({ status: 'paid' }).where(eq(popupRsvps.id, rsvp.id));
+          logger.info(`Popup RSVP ${rsvp.id} marked paid via webhook`);
+        }
+      } else if (type === 'popup_request') {
+        const [request] = await db
+          .select()
+          .from(popupRequests)
+          .where(eq(popupRequests.stripe_payment_intent_id, pi.id));
+        if (request && request.status === 'pending') {
+          await db.update(popupRequests).set({ status: 'paid' }).where(eq(popupRequests.id, request.id));
+          logger.info(`Popup request ${request.id} marked paid via webhook`);
+        }
+      } else if (type === 'campaign_commission') {
+        const [commission] = await db
+          .select()
+          .from(campaignCommissions)
+          .where(eq(campaignCommissions.stripe_payment_intent_id, pi.id));
+        if (commission && commission.status === 'pending') {
+          await db.update(campaignCommissions).set({ status: 'paid' }).where(eq(campaignCommissions.id, commission.id));
+          logger.info(`Campaign commission ${commission.id} marked paid via webhook`);
+        }
       }
     }
 
     if (event.type === 'payment_intent.payment_failed') {
       const pi = event.data.object as Stripe.PaymentIntent;
-      await db
-        .update(orders)
-        .set({ status: 'cancelled' })
-        .where(eq(orders.stripe_payment_intent_id, pi.id));
+      const type = pi.metadata?.type;
+
+      if (!type || type === 'order') {
+        await db.update(orders).set({ status: 'cancelled' }).where(eq(orders.stripe_payment_intent_id, pi.id));
+      } else if (type === 'popup_rsvp') {
+        await db.update(popupRsvps).set({ status: 'cancelled' }).where(eq(popupRsvps.stripe_payment_intent_id, pi.id));
+      } else if (type === 'popup_request') {
+        await db.update(popupRequests).set({ status: 'cancelled' }).where(eq(popupRequests.stripe_payment_intent_id, pi.id));
+      } else if (type === 'campaign_commission') {
+        await db.update(campaignCommissions).set({ status: 'cancelled' }).where(eq(campaignCommissions.stripe_payment_intent_id, pi.id));
+      }
     }
   } catch (err) {
     // Log but return 200 — Stripe will retry on non-2xx responses

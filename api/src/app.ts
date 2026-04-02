@@ -17,6 +17,9 @@ import businessesRouter from './routes/businesses';
 import posRouter from './routes/pos';
 import askRouter from './routes/ask';
 import authRouter from './routes/auth';
+import popupsRouter from './routes/popups';
+import popupRequestsRouter from './routes/popup-requests';
+import campaignCommissionsRouter from './routes/campaign-commissions';
 import { logger } from './lib/logger';
 
 const app = express();
@@ -48,6 +51,9 @@ app.use('/api/businesses', businessesRouter);
 app.use('/api/pos', posRouter);
 app.use('/api/ask', askRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/popups', popupsRouter);
+app.use('/api/popup-requests', popupRequestsRouter);
+app.use('/api/campaign-commissions', campaignCommissionsRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
