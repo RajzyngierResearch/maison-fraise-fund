@@ -20,7 +20,8 @@ export type PanelId =
   | 'dj-offer'
   | 'nomination'
   | 'partner-detail'
-  | 'campaign-commission';
+  | 'campaign-commission'
+  | 'contract-offer';
 
 export interface OrderState {
   variety_id: number | null;
@@ -82,6 +83,10 @@ export interface Business {
   entrance_fee_cents?: number;
   is_audition?: boolean;
   audition_status?: 'pending' | 'passed' | 'failed';
+  placed_user_name?: string | null;
+  starts_at?: string;
+  host_user_id?: number | null;
+  checkin_token?: string | null;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;

@@ -21,6 +21,7 @@ import DjOfferPanel from './panels/DjOfferPanel';
 import NominationPanel from './panels/NominationPanel';
 import PartnerDetailPanel from './panels/PartnerDetailPanel';
 import CampaignCommissionPanel from './panels/CampaignCommissionPanel';
+import ContractOfferPanel from './panels/ContractOfferPanel';
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
@@ -42,12 +43,13 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   'nomination': NominationPanel,
   'partner-detail': PartnerDetailPanel,
   'campaign-commission': CampaignCommissionPanel,
+  'contract-offer': ContractOfferPanel,
 };
 
 // Panels that should always expand the sheet to full height
 const FULL_HEIGHT_PANELS = new Set([
   'location', 'chocolate', 'finish', 'quantity', 'gift-note', 'when', 'review', 'confirmation', 'nfc', 'verified', 'standingOrder',
-  'popup-request', 'popup-detail', 'dj-offer', 'nomination', 'partner-detail', 'campaign-commission',
+  'popup-request', 'popup-detail', 'dj-offer', 'nomination', 'partner-detail', 'campaign-commission', 'contract-offer',
 ]);
 
 // Panels that expand to medium height

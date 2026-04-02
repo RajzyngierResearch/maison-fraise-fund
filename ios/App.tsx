@@ -81,6 +81,9 @@ export default function App() {
         const popupId = response.notification.request.content.data?.popup_id;
         if (popupId) { setPendingData({ popup_id: popupId }); setPendingScreen('campaign-commission'); }
       }
+      if (screen === 'contract_offer') {
+        setPendingScreen('contract-offer');
+      }
     });
     return () => sub.remove();
   }, []);
@@ -135,7 +138,9 @@ async function registerForPushNotifications(): Promise<string | null> {
   if (finalStatus !== 'granted') return null;
 
   try {
-    const token = await Notifications.getExpoPushTokenAsync();
+    const token = await Notifications.getExpoPushTokenAsync({
+      projectId: 'ec4ad15d-2535-42a4-91a0-70599925e6f5',
+    });
     return token.data;
   } catch {
     return null;

@@ -11,7 +11,7 @@ import {
   signInWithApple, fetchStandingOrders, updateStandingOrder,
   cancelStandingOrder, fetchOrdersByEmail,
   fetchUserPopupRsvps, fetchDjGigs, fetchDjAllocations, registerAsDj,
-  fetchHostedPopups,
+  fetchHostedPopups, fetchActiveContract, fetchFollowerCount, logMemberVisit,
 } from '../../lib/api';
 import { CHOCOLATES, FINISHES } from '../../data/seed';
 import { useColors, fonts } from '../../theme';
@@ -37,6 +37,9 @@ export default function ProfilePanel() {
   const [hostedPopups, setHostedPopups] = useState<any[]>([]);
   const [djGigs, setDjGigs] = useState<any[]>([]);
   const [allocations, setAllocations] = useState<any[]>([]);
+  const [activeContract, setActiveContract] = useState<any>(null);
+  const [followerCount, setFollowerCount] = useState<number>(0);
+  const [loggingVisit, setLoggingVisit] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -65,6 +68,8 @@ export default function ProfilePanel() {
         const uid = parseInt(dbId, 10);
         setUserDbId(uid);
         fetchStandingOrders(uid).then(setStandingOrders).catch(() => {});
+        fetchActiveContract(uid).then(setActiveContract).catch(() => {});
+        fetchFollowerCount(uid).then(r => setFollowerCount(r.follower_count)).catch(() => {});
         if (verifiedBool) {
           fetchUserPopupRsvps(uid).then(setUpcomingPopups).catch(() => {});
           fetchHostedPopups(uid).then(setHostedPopups).catch(() => {});
@@ -134,6 +139,19 @@ export default function ProfilePanel() {
     }
   };
 
+  const handleLogVisit = async () => {
+    if (!activeContract || !userDbId || loggingVisit) return;
+    setLoggingVisit(true);
+    try {
+      await logMemberVisit(activeContract.business_id, userDbId);
+      Alert.alert('Visit logged', 'Member visit recorded successfully.');
+    } catch (err: any) {
+      Alert.alert('Could not log', err.message ?? 'Please try again.');
+    } finally {
+      setLoggingVisit(false);
+    }
+  };
+
   const handleCancelStanding = (id: number) => {
     Alert.alert('Cancel standing order?', 'This cannot be undone.', [
       { text: 'Keep it', style: 'cancel' },
@@ -177,6 +195,8 @@ export default function ProfilePanel() {
           setHostedPopups([]);
           setDjGigs([]);
           setAllocations([]);
+          setActiveContract(null);
+          setFollowerCount(0);
           setOrder({ customer_email: '' });
         },
       },
@@ -262,6 +282,34 @@ export default function ProfilePanel() {
           <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
         ) : (
           <>
+            {/* Active contract / placement */}
+            {activeContract && (
+              <View style={[styles.contractCard, { backgroundColor: c.card, borderColor: c.border }]}>
+                <Text style={[styles.sectionLabel, { color: c.muted }]}>CURRENT PLACEMENT</Text>
+                <Text style={[styles.contractBiz, { color: c.text }]}>{activeContract.business_name}</Text>
+                <Text style={[styles.contractMeta, { color: c.muted }]}>{activeContract.business_address}</Text>
+                <View style={[styles.contractDivider, { backgroundColor: c.border }]} />
+                <TouchableOpacity
+                  style={[styles.logVisitBtn, { backgroundColor: c.accent }, loggingVisit && { opacity: 0.6 }]}
+                  onPress={handleLogVisit}
+                  activeOpacity={0.8}
+                  disabled={loggingVisit}
+                >
+                  <Text style={styles.logVisitText}>+ Log member visit</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Follower count */}
+            {userDbId && followerCount > 0 && (
+              <View style={[styles.followerRow, { borderColor: c.border }]}>
+                <Text style={[styles.followerCount, { color: c.text }]}>{followerCount}</Text>
+                <Text style={[styles.followerLabel, { color: c.muted }]}>
+                  {followerCount === 1 ? 'follower' : 'followers'}
+                </Text>
+              </View>
+            )}
+
             {/* Order again */}
             {lastOrder && (
               <TouchableOpacity
@@ -352,6 +400,20 @@ export default function ProfilePanel() {
             {/* Verified actions */}
             {isVerified && (
               <View style={[styles.verifiedActions, { borderColor: c.border }]}>
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={() => showPanel('contract-offer')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.text }]}>Placement offer</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Review your contract from Maison Fraise</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
                 <TouchableOpacity
                   style={styles.actionRow}
                   onPress={() => showPanel('popup-request')}
@@ -577,4 +639,31 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   verifyHint: { gap: 5 },
   verifyHintText: { fontSize: 13, fontFamily: fonts.dmSans, lineHeight: 20, fontStyle: 'italic' },
+
+  contractCard: {
+    borderRadius: 14,
+    padding: SPACING.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 4,
+  },
+  contractBiz: { fontSize: 17, fontFamily: fonts.playfair, marginTop: 4 },
+  contractMeta: { fontSize: 12, fontFamily: fonts.dmSans },
+  contractDivider: { height: StyleSheet.hairlineWidth, marginVertical: 10 },
+  logVisitBtn: {
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  logVisitText: { fontSize: 14, fontFamily: fonts.dmSans, color: '#fff' },
+
+  followerRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  followerCount: { fontSize: 22, fontFamily: fonts.playfair },
+  followerLabel: { fontSize: 12, fontFamily: fonts.dmMono },
 });
