@@ -26,7 +26,7 @@ router.get('/:id/rsvp-status', async (req: Request, res: Response) => {
       .from(popupRsvps)
       .where(and(eq(popupRsvps.popup_id, popup_id), eq(popupRsvps.user_id, user_id), ne(popupRsvps.status, 'cancelled')));
 
-    res.json({ has_rsvp: !!rsvp });
+    res.json({ has_rsvp: !!rsvp, status: rsvp?.status ?? null });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -56,6 +56,20 @@ router.post('/:id/rsvp', async (req: Request, res: Response) => {
     if (existing) {
       res.status(409).json({ error: 'Already RSVPed' });
       return;
+    }
+
+    // Check capacity — if full, add to waitlist (free, no payment)
+    if (popup.capacity) {
+      const [{ paid_count }] = await db
+        .select({ paid_count: sql<number>`cast(count(*) as int)` })
+        .from(popupRsvps)
+        .where(and(eq(popupRsvps.popup_id, popup_id), eq(popupRsvps.status, 'paid')));
+      if (paid_count >= popup.capacity) {
+        const [rsvp] = await db.insert(popupRsvps).values({
+          popup_id, user_id, status: 'waitlist',
+        }).returning();
+        return res.status(201).json({ id: rsvp.id, client_secret: null, waitlisted: true });
+      }
     }
 
     const fee = popup.entrance_fee_cents ?? 0;
@@ -216,12 +230,12 @@ router.get('/:id/nominations/status', async (req: Request, res: Response) => {
   }
 
   try {
-    const [nomination] = await db
+    const nominations = await db
       .select()
       .from(popupNominations)
       .where(and(eq(popupNominations.popup_id, popup_id), eq(popupNominations.nominator_id, user_id)));
 
-    res.json({ has_nominated: !!nomination });
+    res.json({ has_nominated: nominations.length > 0, nomination_count: nominations.length, nominations_remaining: Math.max(0, 3 - nominations.length) });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -251,13 +265,17 @@ router.post('/:id/nominations', async (req: Request, res: Response) => {
       return;
     }
 
-    // One nomination per nominator per popup
-    const [existing] = await db
+    // Max 3 nominations per nominator per popup, each to a different nominee
+    const existingNominations = await db
       .select()
       .from(popupNominations)
       .where(and(eq(popupNominations.popup_id, popup_id), eq(popupNominations.nominator_id, nominator_id)));
-    if (existing) {
-      res.status(409).json({ error: 'Already nominated someone at this popup' });
+    if (existingNominations.length >= 3) {
+      res.status(429).json({ error: 'Nomination limit reached (3 per popup)' });
+      return;
+    }
+    if (existingNominations.some(n => n.nominee_id === nominee_id)) {
+      res.status(409).json({ error: 'Already nominated this person' });
       return;
     }
 

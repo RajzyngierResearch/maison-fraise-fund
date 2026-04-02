@@ -3,7 +3,8 @@ import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { stripe } from '../lib/stripe';
 import { db } from '../db';
-import { orders, popupRsvps, popupRequests, campaignCommissions } from '../db/schema';
+import { orders, popupRsvps, popupRequests, campaignCommissions, users } from '../db/schema';
+import { sendPushNotification } from '../lib/push';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -71,6 +72,20 @@ router.post('/webhook', async (req: Request, res: Response) => {
         if (commission && commission.status === 'pending') {
           await db.update(campaignCommissions).set({ status: 'paid' }).where(eq(campaignCommissions.id, commission.id));
           logger.info(`Campaign commission ${commission.id} marked paid via webhook`);
+        }
+      } else if (type === 'tip') {
+        const contracted_user_id = parseInt(pi.metadata?.contracted_user_id ?? '', 10);
+        const amount = pi.amount;
+        if (!isNaN(contracted_user_id)) {
+          const [user] = await db.select({ push_token: users.push_token })
+            .from(users).where(eq(users.id, contracted_user_id));
+          if (user?.push_token) {
+            sendPushNotification(user.push_token, {
+              title: 'You received a tip',
+              body: `CA$${(amount / 100).toFixed(2)} — thank you!`,
+              data: { screen: 'home' },
+            }).catch(() => {});
+          }
         }
       }
     }

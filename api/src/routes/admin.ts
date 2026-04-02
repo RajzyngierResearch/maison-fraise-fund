@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { eq, isNull, sql, and } from 'drizzle-orm';
+import { eq, isNull, sql, and, lte } from 'drizzle-orm';
 import { db } from '../db';
 import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits } from '../db/schema';
 import { logger } from '../lib/logger';
@@ -783,6 +783,37 @@ router.patch('/contract-requests/:id', async (req: Request, res: Response) => {
     const [updated] = await db.update(contractRequests).set(req.body).where(eq(contractRequests.id, id)).returning();
     if (!updated) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/contracts/expiring-soon — active contracts ending within 14 days
+router.get('/contracts/expiring-soon', async (_req: Request, res: Response) => {
+  const twoWeeksFromNow = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  try {
+    const rows = await db
+      .select({
+        id: employmentContracts.id,
+        user_id: employmentContracts.user_id,
+        display_name: users.display_name,
+        email: users.email,
+        business_name: businesses.name,
+        business_id: employmentContracts.business_id,
+        ends_at: employmentContracts.ends_at,
+      })
+      .from(employmentContracts)
+      .innerJoin(users, eq(employmentContracts.user_id, users.id))
+      .innerJoin(businesses, eq(employmentContracts.business_id, businesses.id))
+      .where(and(
+        eq(employmentContracts.status, 'active'),
+        lte(employmentContracts.ends_at, twoWeeksFromNow),
+      ));
+
+    res.json(rows.map(r => ({
+      ...r,
+      display_name: r.display_name ?? r.email.split('@')[0],
+    })));
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

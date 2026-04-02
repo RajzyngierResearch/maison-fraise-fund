@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { eq, asc, and, sql } from 'drizzle-orm';
+import { eq, asc, and, sql, lt, gte } from 'drizzle-orm';
 import { db } from '../db';
 import { businesses, portraits, businessVisits, employmentContracts, users } from '../db/schema';
+import { stripe } from '../lib/stripe';
 
 const router = Router();
 
@@ -157,6 +158,105 @@ router.get('/:id/placed-user', async (req: Request, res: Response) => {
       display_name: r.display_name ?? r.email.split('@')[0],
       ends_at: r.ends_at,
     });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/businesses/:id/popup-stats — next upcoming popup + past popup count at this partner venue
+router.get('/:id/popup-stats', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+  try {
+    const now = new Date();
+
+    const allPopups = await db
+      .select()
+      .from(businesses)
+      .where(and(
+        eq(businesses.partner_business_id, id),
+        eq(businesses.type, 'popup'),
+      ));
+
+    const upcoming = allPopups
+      .filter(p => p.starts_at && p.starts_at >= now)
+      .sort((a, b) => (a.starts_at?.getTime() ?? 0) - (b.starts_at?.getTime() ?? 0));
+
+    const pastCount = allPopups.filter(p => !p.starts_at || p.starts_at < now).length;
+
+    const next = upcoming[0] ?? null;
+
+    res.json({
+      next_popup: next ? {
+        id: next.id,
+        name: next.name,
+        starts_at: next.starts_at,
+        ends_at: next.ends_at,
+        capacity: next.capacity,
+        entrance_fee_cents: next.entrance_fee_cents,
+        is_audition: next.is_audition,
+        neighbourhood: next.neighbourhood,
+        lat: next.latitude ? parseFloat(String(next.latitude)) : null,
+        lng: next.longitude ? parseFloat(String(next.longitude)) : null,
+      } : null,
+      past_popup_count: pastCount,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/businesses/:id/placed-history — users who have completed contracts here
+router.get('/:id/placed-history', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+  try {
+    const rows = await db
+      .select({
+        user_id: employmentContracts.user_id,
+        display_name: users.display_name,
+        email: users.email,
+        starts_at: employmentContracts.starts_at,
+        ends_at: employmentContracts.ends_at,
+      })
+      .from(employmentContracts)
+      .innerJoin(users, eq(employmentContracts.user_id, users.id))
+      .where(and(eq(employmentContracts.business_id, id), eq(employmentContracts.status, 'completed')));
+
+    res.json(rows.map(r => ({
+      user_id: r.user_id,
+      display_name: r.display_name ?? r.email.split('@')[0],
+      starts_at: r.starts_at,
+      ends_at: r.ends_at,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/businesses/:id/tip — Stripe tip for placed user
+router.post('/:id/tip', async (req: Request, res: Response) => {
+  const business_id = parseInt(req.params.id, 10);
+  const { amount_cents } = req.body;
+  if (isNaN(business_id) || !amount_cents || amount_cents < 100) {
+    res.status(400).json({ error: 'amount_cents (min 100) is required' });
+    return;
+  }
+  try {
+    const [contract] = await db
+      .select()
+      .from(employmentContracts)
+      .where(and(eq(employmentContracts.business_id, business_id), eq(employmentContracts.status, 'active')));
+    if (!contract) {
+      res.status(404).json({ error: 'No placed user at this business' });
+      return;
+    }
+    const pi = await stripe.paymentIntents.create({
+      amount: amount_cents,
+      currency: 'cad',
+      metadata: { type: 'tip', business_id: String(business_id), contracted_user_id: String(contract.user_id) },
+    });
+    res.json({ client_secret: pi.client_secret });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

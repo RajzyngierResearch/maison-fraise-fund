@@ -401,6 +401,26 @@ export async function logMemberVisit(businessId: number, contractedUserId: numbe
   return res.json();
 }
 
+export async function fetchBusinessPopupStats(businessId: number) {
+  const res = await fetch(`${BASE_URL}/api/businesses/${businessId}/popup-stats`);
+  if (!res.ok) throw new Error('Failed to fetch popup stats');
+  return res.json() as Promise<{
+    next_popup: {
+      id: number;
+      name: string;
+      starts_at: string;
+      ends_at: string | null;
+      capacity: number | null;
+      entrance_fee_cents: number | null;
+      is_audition: boolean;
+      neighbourhood: string | null;
+      lat: number | null;
+      lng: number | null;
+    } | null;
+    past_popup_count: number;
+  }>;
+}
+
 export async function fetchBusinessVisitCount(businessId: number) {
   const res = await fetch(`${BASE_URL}/api/businesses/${businessId}/visits/count`);
   if (!res.ok) throw new Error('Failed to fetch visit count');
@@ -424,4 +444,43 @@ export async function verifyNfc(nfc_token: string, user_db_id: number) {
     throw new Error(err.error ?? 'Verification failed');
   }
   return res.json();
+}
+
+export async function fetchPlacedHistory(businessId: number) {
+  const res = await fetch(`${BASE_URL}/api/businesses/${businessId}/placed-history`);
+  if (!res.ok) throw new Error('Failed to fetch placed history');
+  return res.json() as Promise<{ user_id: number; display_name: string; starts_at: string; ends_at: string }[]>;
+}
+
+export async function createTip(businessId: number, amount_cents: number) {
+  const res = await fetch(`${BASE_URL}/api/businesses/${businessId}/tip`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount_cents }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'Failed to create tip');
+  }
+  return res.json() as Promise<{ client_secret: string }>;
+}
+
+export async function fetchPublicProfile(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/public-profile`);
+  if (!res.ok) throw new Error('Failed to fetch profile');
+  return res.json() as Promise<{
+    user_id: number;
+    display_name: string;
+    is_dj: boolean;
+    follower_count: number;
+    nomination_count: number;
+    active_placement: { business_name: string; business_address: string; ends_at: string } | null;
+    past_placements: number;
+  }>;
+}
+
+export async function fetchLegitimacyBreakdown(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/legitimacy`);
+  if (!res.ok) throw new Error('Failed to fetch legitimacy');
+  return res.json() as Promise<{ total: number; breakdown: { event_type: string; total: number; count: number }[] }>;
 }

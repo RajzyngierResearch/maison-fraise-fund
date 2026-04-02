@@ -121,6 +121,9 @@ export default function HomePanel() {
         >
           <View style={styles.rowMain}>
             <Text style={[styles.varietyName, { color: c.text }]}>{v.name}</Text>
+            {!!v.description && (
+              <Text style={[styles.varietyDesc, { color: c.muted }]} numberOfLines={2}>{v.description}</Text>
+            )}
             <View style={styles.meta}>
               {v.farm && <Text style={[styles.farm, { color: c.muted }]}>{v.farm}</Text>}
               <View style={[styles.freshDot, { backgroundColor: freshColor }]} />
@@ -262,4 +265,5 @@ const styles = StyleSheet.create({
   price: { fontSize: 15, fontFamily: fonts.dmMono },
   stock: { fontSize: 11, fontFamily: fonts.dmSans },
   emptyText: { fontSize: 15, fontFamily: fonts.dmSans, textAlign: 'center', fontStyle: 'italic' },
+  varietyDesc: { fontSize: 11, fontFamily: fonts.dmSans, lineHeight: 16, fontStyle: 'italic' },
 });

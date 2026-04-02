@@ -181,7 +181,12 @@ export default function MapScreen() {
         TrueSheet.present(SHEET_NAME, 2);
       }
     }
-  }, [pendingScreen]);
+    if (pendingScreen === 'contract-offer') {
+      clearPendingScreen();
+      jumpToPanel('contract-offer');
+      TrueSheet.present(SHEET_NAME, 2);
+    }
+  }, [pendingScreen, businesses]);
 
   const loadBusinesses = () => {
     setBizError(false);
@@ -432,9 +437,13 @@ export default function MapScreen() {
             key={`biz-${b.id}`}
             coordinate={{ latitude: b.lat, longitude: b.lng }}
             onPress={() => handlePartnerPress(b)}
+            tracksViewChanges={false}
           >
             <View style={[styles.pinPartner, { borderColor: c.markerBg }]}>
               <View style={[styles.pinPartnerDot, { backgroundColor: c.markerBg }]} />
+              {b.placed_user_name && (
+                <View style={styles.pinPlacedDot} />
+              )}
             </View>
           </Marker>
         ))}
@@ -575,6 +584,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
   },
   pinPartnerDot: { width: 5, height: 5, borderRadius: 3 },
+  pinPlacedDot: {
+    position: 'absolute', top: -3, right: -3,
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: '#C9973A',
+    borderWidth: 1.5, borderColor: '#fff',
+  },
   bizLoadingIndicator: { position: 'absolute', alignSelf: 'center' },
   bizErrorBanner: {
     position: 'absolute',

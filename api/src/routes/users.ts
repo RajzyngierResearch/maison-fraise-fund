@@ -272,4 +272,71 @@ router.get('/:id/followers', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/users/:id/public-profile
+router.get('/:id/public-profile', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) { res.status(400).json({ error: 'Invalid user id' }); return; }
+  try {
+    const [user] = await db.select().from(users).where(eq(users.id, user_id));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+    const [followerRow] = await db
+      .select({ total: sql<number>`cast(count(distinct ${popupNominations.nominator_id}) as int)` })
+      .from(popupNominations).where(eq(popupNominations.nominee_id, user_id));
+
+    const [nominationRow] = await db
+      .select({ total: sql<number>`cast(count(*) as int)` })
+      .from(popupNominations).where(eq(popupNominations.nominee_id, user_id));
+
+    const [activeContract] = await db
+      .select({ business_name: businesses.name, business_address: businesses.address, ends_at: employmentContracts.ends_at })
+      .from(employmentContracts)
+      .innerJoin(businesses, eq(employmentContracts.business_id, businesses.id))
+      .where(and(eq(employmentContracts.user_id, user_id), eq(employmentContracts.status, 'active')));
+
+    const [pastRow] = await db
+      .select({ total: sql<number>`cast(count(*) as int)` })
+      .from(employmentContracts)
+      .where(and(eq(employmentContracts.user_id, user_id), eq(employmentContracts.status, 'completed')));
+
+    res.json({
+      user_id,
+      display_name: user.display_name ?? user.email.split('@')[0],
+      is_dj: user.is_dj,
+      follower_count: followerRow?.total ?? 0,
+      nomination_count: nominationRow?.total ?? 0,
+      active_placement: activeContract ? {
+        business_name: activeContract.business_name,
+        business_address: activeContract.business_address,
+        ends_at: activeContract.ends_at,
+      } : null,
+      past_placements: pastRow?.total ?? 0,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/legitimacy — score breakdown by event type
+router.get('/:id/legitimacy', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) { res.status(400).json({ error: 'Invalid user id' }); return; }
+  try {
+    const events = await db
+      .select({
+        event_type: legitimacyEvents.event_type,
+        total: sql<number>`cast(sum(${legitimacyEvents.weight}) as int)`,
+        count: sql<number>`cast(count(*) as int)`,
+      })
+      .from(legitimacyEvents)
+      .where(eq(legitimacyEvents.user_id, user_id))
+      .groupBy(legitimacyEvents.event_type);
+
+    const total = events.reduce((s, e) => s + (e.total ?? 0), 0);
+    res.json({ total, breakdown: events });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

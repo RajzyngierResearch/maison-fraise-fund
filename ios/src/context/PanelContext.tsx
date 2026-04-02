@@ -21,7 +21,9 @@ export type PanelId =
   | 'nomination'
   | 'partner-detail'
   | 'campaign-commission'
-  | 'contract-offer';
+  | 'contract-offer'
+  | 'lookbook'
+  | 'user-profile';
 
 export interface OrderState {
   variety_id: number | null;
@@ -75,7 +77,6 @@ export interface Business {
   neighbourhood?: string;
   launched_at?: string;
   ends_at?: string;
-  hours?: string;
   dj_name?: string;
   organizer_note?: string;
   rsvp_count?: number;
@@ -87,6 +88,8 @@ export interface Business {
   starts_at?: string;
   host_user_id?: number | null;
   checkin_token?: string | null;
+  contact?: string | null;
+  hours?: string | null;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -127,6 +130,8 @@ interface PanelContextValue {
   setVarieties: (v: Variety[]) => void;
   setBusinesses: (b: Business[]) => void;
   setActiveLocation: (b: Business | null) => void;
+  panelData: Record<string, any> | null;
+  setPanelData: (data: Record<string, any> | null) => void;
   showPanel: (id: PanelId) => void;
   jumpToPanel: (id: PanelId) => void;
   goBack: () => void;
@@ -146,6 +151,7 @@ export function PanelProvider({ children }: { children: ReactNode }) {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [activeLocation, setActiveLocation] = useState<Business | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
+  const [panelData, setPanelData] = useState<Record<string, any> | null>(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const animSafetyRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -218,6 +224,7 @@ export function PanelProvider({ children }: { children: ReactNode }) {
       stack, currentPanel, slideAnim, isAnimating,
       order, varieties, businesses, activeLocation,
       setOrder, setVarieties, setBusinesses, setActiveLocation,
+      panelData, setPanelData,
       showPanel, jumpToPanel, goBack, goHome,
       sheetHeight, setSheetHeight,
     }}>

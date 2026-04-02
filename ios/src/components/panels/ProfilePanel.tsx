@@ -12,6 +12,7 @@ import {
   cancelStandingOrder, fetchOrdersByEmail,
   fetchUserPopupRsvps, fetchDjGigs, fetchDjAllocations, registerAsDj,
   fetchHostedPopups, fetchActiveContract, fetchFollowerCount, logMemberVisit,
+  fetchLegitimacyBreakdown,
 } from '../../lib/api';
 import { CHOCOLATES, FINISHES } from '../../data/seed';
 import { useColors, fonts } from '../../theme';
@@ -40,6 +41,7 @@ export default function ProfilePanel() {
   const [activeContract, setActiveContract] = useState<any>(null);
   const [followerCount, setFollowerCount] = useState<number>(0);
   const [loggingVisit, setLoggingVisit] = useState(false);
+  const [legitimacy, setLegitimacy] = useState<{ total: number; breakdown: { event_type: string; total: number; count: number }[] } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -70,6 +72,7 @@ export default function ProfilePanel() {
         fetchStandingOrders(uid).then(setStandingOrders).catch(() => {});
         fetchActiveContract(uid).then(setActiveContract).catch(() => {});
         fetchFollowerCount(uid).then(r => setFollowerCount(r.follower_count)).catch(() => {});
+        fetchLegitimacyBreakdown(uid).then(setLegitimacy).catch(() => {});
         if (verifiedBool) {
           fetchUserPopupRsvps(uid).then(setUpcomingPopups).catch(() => {});
           fetchHostedPopups(uid).then(setHostedPopups).catch(() => {});
@@ -307,6 +310,24 @@ export default function ProfilePanel() {
                 <Text style={[styles.followerLabel, { color: c.muted }]}>
                   {followerCount === 1 ? 'follower' : 'followers'}
                 </Text>
+              </View>
+            )}
+
+            {/* Legitimacy score */}
+            {legitimacy && legitimacy.total > 0 && (
+              <View style={[styles.legitimacyCard, { borderColor: c.border }]}>
+                <View style={styles.legitimacyHeader}>
+                  <Text style={[styles.sectionLabel, { color: c.muted }]}>RELEVANCE SCORE</Text>
+                  <Text style={[styles.legitimacyTotal, { color: c.text }]}>{legitimacy.total}</Text>
+                </View>
+                {legitimacy.breakdown.map(e => (
+                  <View key={e.event_type} style={[styles.legitimacyRow, { borderTopColor: c.border }]}>
+                    <Text style={[styles.legitimacyType, { color: c.muted }]}>
+                      {e.event_type.replace(/_/g, ' ')}
+                    </Text>
+                    <Text style={[styles.legitimacyScore, { color: c.text }]}>+{e.total}</Text>
+                  </View>
+                ))}
               </View>
             )}
 
@@ -666,4 +687,20 @@ const styles = StyleSheet.create({
   },
   followerCount: { fontSize: 22, fontFamily: fonts.playfair },
   followerLabel: { fontSize: 12, fontFamily: fonts.dmMono },
+
+  legitimacyCard: {
+    borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden',
+  },
+  legitimacyHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: SPACING.md, paddingVertical: 12,
+  },
+  legitimacyTotal: { fontSize: 22, fontFamily: fonts.playfair },
+  legitimacyRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: SPACING.md, paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  legitimacyType: { fontSize: 12, fontFamily: fonts.dmSans, textTransform: 'capitalize' },
+  legitimacyScore: { fontSize: 14, fontFamily: fonts.dmMono },
 });

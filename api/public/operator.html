@@ -301,6 +301,7 @@
       { id:'popups',   label:'Popups' },
       { id:'requests', label:'Requests' },
       { id:'portraits',label:'Portraits' },
+      { id:'talent',   label:'Talent' },
     ];
     document.getElementById('tab-row').innerHTML = tabs.map(t =>
       `<div class="tab ${t.id === currentTab ? 'active' : ''}" onclick="switchTab('${t.id}')">${t.label}</div>`
@@ -314,6 +315,7 @@
     else if (tab === 'popups')    renderPopupsTab();
     else if (tab === 'requests')  renderRequestsTab();
     else if (tab === 'portraits') renderPortraitsTab();
+    else if (tab === 'talent')   renderTalentTab();
   }
 
   // ── ORDERS TAB ────────────────────────────────────────
@@ -676,6 +678,126 @@
   async function deletePortrait(id) {
     await fetch(`${BASE}/api/admin/portraits/${id}`, { method:'DELETE', headers:{'X-Admin-PIN':currentPin} });
     loadPortraits();
+  }
+
+  // ── TALENT TAB ───────────────────────────────────────
+  async function renderTalentTab() {
+    const body = document.getElementById('dash-body');
+    body.innerHTML = '<div class="empty">Loading…</div>';
+
+    const [contractsRes, expiringRes, leaderboardRes] = await Promise.all([
+      fetch(`${BASE}/api/admin/contracts`, { headers: { 'X-Admin-PIN': currentPin } }),
+      fetch(`${BASE}/api/admin/contracts/expiring-soon`, { headers: { 'X-Admin-PIN': currentPin } }),
+      fetch(`${BASE}/api/admin/talent`, { headers: { 'X-Admin-PIN': currentPin } }),
+    ]);
+
+    const contracts   = contractsRes.ok   ? await contractsRes.json()   : [];
+    const expiring    = expiringRes.ok    ? await expiringRes.json()    : [];
+    const leaderboard = leaderboardRes.ok ? await leaderboardRes.json() : [];
+
+    const active  = contracts.filter(c => c.status === 'active');
+    const pending = contracts.filter(c => c.status === 'pending');
+
+    const visitCache = {};
+    await Promise.all(active.map(async c => {
+      const r = await fetch(`${BASE}/api/businesses/${c.business_id}/visits/count`, { headers: { 'X-Admin-PIN': currentPin } });
+      if (r.ok) { const d = await r.json(); visitCache[c.business_id] = d.visit_count; }
+    }));
+
+    const fmtDate = iso => new Date(iso).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+    const daysUntil = iso => Math.ceil((new Date(iso) - Date.now()) / 86400000);
+
+    body.innerHTML = `
+      ${expiring.length ? `
+      <div class="section-heading" style="color:#C0392B">⚠ Expiring Within 14 Days</div>
+      <div class="form-card" style="border-left: 3px solid #C0392B; margin-bottom:16px;">
+        ${expiring.map(c => `
+          <div class="portrait-row">
+            <div style="flex:1">
+              <div style="font-family:'Playfair Display',serif;font-size:15px">${c.display_name}</div>
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${c.business_name} · ends ${fmtDate(c.ends_at)}</div>
+            </div>
+            <div style="font-family:'DM Mono',monospace;font-size:11px;color:#C0392B">${daysUntil(c.ends_at)}d left</div>
+          </div>`).join('')}
+      </div>` : ''}
+
+      <div class="section-heading">Active Placements</div>
+      ${active.length ? active.map(c => {
+        const visits = visitCache[c.business_id] ?? 0;
+        const maxVisits = Math.max(...Object.values(visitCache), 1);
+        const barW = Math.round((visits / maxVisits) * 120);
+        return `
+        <div class="form-card" style="margin-bottom:10px;">
+          <div class="portrait-row">
+            <div style="flex:1;gap:4px;">
+              <div style="font-family:'Playfair Display',serif;font-size:16px">${c.user_display_name}</div>
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${c.business_name}</div>
+              <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">${fmtDate(c.starts_at)} → ${fmtDate(c.ends_at)}</div>
+            </div>
+            <div style="text-align:right;gap:6px;">
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${visits} visits</div>
+              <div style="height:6px;width:${barW}px;background:var(--amber);border-radius:3px;margin-top:6px;margin-left:auto"></div>
+            </div>
+          </div>
+        </div>`}).join('') : '<div class="empty">No active placements.</div>'}
+
+      ${pending.length ? `
+      <div class="section-heading" style="margin-top:20px">Pending Offers</div>
+      ${pending.map(c => `
+        <div class="form-card" style="margin-bottom:8px;">
+          <div class="portrait-row">
+            <div style="flex:1">
+              <div style="font-family:'Playfair Display',serif;font-size:15px">${c.user_display_name}</div>
+              <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted)">${c.business_name} · sent ${fmtDate(c.created_at)}</div>
+            </div>
+            <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">Awaiting response</div>
+          </div>
+        </div>`).join('')}` : ''}
+
+      <div class="section-heading" style="margin-top:20px">Send Contract Offer</div>
+      <div class="form-card">
+        <div class="form-grid">
+          <div class="form-row"><div class="form-label">Business ID</div><input class="form-input" id="co-biz" type="number" placeholder="123" /></div>
+          <div class="form-row"><div class="form-label">User ID</div><input class="form-input" id="co-user" type="number" placeholder="456" /></div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row"><div class="form-label">Starts</div><input class="form-input" id="co-start" type="date" /></div>
+          <div class="form-row"><div class="form-label">Ends</div><input class="form-input" id="co-end" type="date" /></div>
+        </div>
+        <div class="form-row"><div class="form-label">Note (optional)</div><input class="form-input" id="co-note" placeholder="Great energy at the last popup…" /></div>
+        <button class="action-btn" onclick="sendContractOffer()" style="margin-top:8px">Send offer</button>
+      </div>
+
+      <div class="section-heading" style="margin-top:20px">Relevance Leaderboard</div>
+      ${leaderboard.length ? `<div class="form-card">${leaderboard.slice(0,20).map((u, i) => `
+        <div class="portrait-row">
+          <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);width:24px">${i+1}</div>
+          <div style="flex:1">
+            <div style="font-family:'Playfair Display',serif;font-size:15px">${u.display_name}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted)">
+              ${u.nomination_count} noms · ${u.follower_count} followers · ${u.contracts_completed} contracts
+              ${u.active_contract ? `· <span style="color:var(--amber)">@ ${u.active_contract.business_name}</span>` : ''}
+            </div>
+          </div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;color:var(--amber)">${u.relevance_score}</div>
+        </div>`).join('')}</div>` : '<div class="empty">No talent data yet.</div>'}
+    `;
+  }
+
+  async function sendContractOffer() {
+    const business_id = parseInt(document.getElementById('co-biz').value);
+    const user_id     = parseInt(document.getElementById('co-user').value);
+    const starts_at   = document.getElementById('co-start').value;
+    const ends_at     = document.getElementById('co-end').value;
+    const note        = document.getElementById('co-note').value.trim() || null;
+    if (!business_id || !user_id || !starts_at || !ends_at) { alert('Business ID, User ID, start and end dates are required.'); return; }
+    const res = await fetch(`${BASE}/api/admin/contracts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ business_id, user_id, starts_at, ends_at, note }),
+    });
+    if (res.ok) { alert('Contract offer sent.'); renderTalentTab(); }
+    else { const e = await res.json(); alert(e.error || 'Failed'); }
   }
 
   // ── CHOCOLATIER ───────────────────────────────────────
