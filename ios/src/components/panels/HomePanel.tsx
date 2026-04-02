@@ -204,6 +204,11 @@ export default function HomePanel() {
                       {isPopup && <Text style={[styles.popupBadge, { color: '#C0392B' }]}>POPUP</Text>}
                       <Text style={[styles.locationName, { color: c.text }]}>{biz.name}</Text>
                       {popupDate && <Text style={[styles.locationDate, { color: c.muted }]}>{popupDate}</Text>}
+                      {!!(biz as any).season_patron_handle && (
+                        <Text style={[styles.seasonPatronLine, { color: c.muted }]}>
+                          {`Season patron: @${(biz as any).season_patron_handle}`}
+                        </Text>
+                      )}
                     </View>
                   </View>
                 ) : (
@@ -216,6 +221,11 @@ export default function HomePanel() {
                       {isPopup && <Text style={[styles.popupBadge, { color: '#C0392B' }]}>POPUP</Text>}
                       <Text style={[styles.locationName, { color: c.text }]}>{biz.name}</Text>
                       {popupDate && <Text style={[styles.locationDate, { color: c.muted }]}>{popupDate}</Text>}
+                      {!!(biz as any).season_patron_handle && (
+                        <Text style={[styles.seasonPatronLine, { color: c.muted }]}>
+                          {`Season patron: @${(biz as any).season_patron_handle}`}
+                        </Text>
+                      )}
                     </View>
                     <Text style={[styles.locationChevron, { color: c.muted }, isExpanded && styles.locationChevronOpen]}>›</Text>
                   </TouchableOpacity>
@@ -298,4 +308,5 @@ const styles = StyleSheet.create({
   varietyDesc: { fontSize: 11, fontFamily: fonts.dmSans, lineHeight: 16, fontStyle: 'italic' },
   harvestDate: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 0.5, fontStyle: 'italic' },
   ratingText: { fontSize: 10, fontFamily: fonts.dmMono, color: '#FFD700' },
+  seasonPatronLine: { fontSize: 11, fontFamily: fonts.dmMono },
 });

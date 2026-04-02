@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { eq, and, desc } from 'drizzle-orm';
 import { db } from '../db';
-import { users, memberships, editorialPieces, employmentContracts } from '../db/schema';
+import { users, memberships, editorialPieces, employmentContracts, patronTokens } from '../db/schema';
 
 const router = Router();
 
@@ -73,6 +73,15 @@ router.get('/:userId', async (req: Request, res: Response) => {
       .where(and(eq(editorialPieces.author_user_id, userId), eq(editorialPieces.status, 'published')))
       .orderBy(desc(editorialPieces.published_at));
 
+    const patron_tokens_list = await db
+      .select({
+        season_year: patronTokens.season_year,
+        location_name: patronTokens.location_name,
+        patronage_id: patronTokens.patronage_id,
+      })
+      .from(patronTokens)
+      .where(eq(patronTokens.patron_user_id, userId));
+
     res.json({
       user: {
         id: user.id,
@@ -81,8 +90,10 @@ router.get('/:userId', async (req: Request, res: Response) => {
         portrait_url: user.portrait_url,
         worker_status: workerStatus,
         portal_opted_in: user.portal_opted_in,
+        is_patron: patron_tokens_list.length > 0,
       },
       editorial_pieces,
+      patron_tokens: patron_tokens_list,
     });
   } catch (err) {
     res.status(500).json({ error: 'internal_error' });

@@ -528,3 +528,32 @@ export const tokenTradeOffers = pgTable('token_trade_offers', {
   status: text('status').notNull().default('pending'),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
+
+// ─── Season patronage system ──────────────────────────────────────────────────
+
+export const seasonPatronages = pgTable('season_patronages', {
+  id: serial('id').primaryKey(),
+  location_id: integer('location_id').notNull().references(() => businesses.id),
+  season_year: integer('season_year').notNull(),
+  price_per_year_cents: integer('price_per_year_cents').notNull(),
+  years_claimed: integer('years_claimed'), // null = available
+  patron_user_id: integer('patron_user_id').references(() => users.id),
+  platform_cut_cents: integer('platform_cut_cents').notNull().default(0),
+  status: text('status').notNull().default('available'), // available | pending | claimed
+  stripe_payment_intent_id: text('stripe_payment_intent_id'),
+  claimed_at: timestamp('claimed_at'),
+  requested_by: integer('requested_by').references(() => users.id), // operator who requested
+  approved_by_admin: boolean('approved_by_admin').notNull().default(false),
+  location_name: text('location_name').notNull(),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const patronTokens = pgTable('patron_tokens', {
+  id: serial('id').primaryKey(),
+  patronage_id: integer('patronage_id').notNull().references(() => seasonPatronages.id),
+  patron_user_id: integer('patron_user_id').notNull().references(() => users.id),
+  season_year: integer('season_year').notNull(),
+  location_name: text('location_name').notNull(),
+  nfc_token: text('nfc_token').unique(),
+  minted_at: timestamp('minted_at').notNull().defaultNow(),
+});

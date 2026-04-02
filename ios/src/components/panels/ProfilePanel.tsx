@@ -648,7 +648,7 @@ export default function ProfilePanel() {
                 <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
 
                 <TouchableOpacity
-                  style={[styles.actionRow, styles.actionRowLast]}
+                  style={styles.actionRow}
                   onPress={() => showPanel('token-offers')}
                   activeOpacity={0.75}
                 >
@@ -658,6 +658,20 @@ export default function ProfilePanel() {
                       {pendingOffers > 0 ? `  [${pendingOffers}]` : ''}
                     </Text>
                     <Text style={[styles.actionSub, { color: c.muted }]}>Incoming token trade requests</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                <TouchableOpacity
+                  style={[styles.actionRow, styles.actionRowLast]}
+                  onPress={() => showPanel('patronages')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.accent, fontFamily: fonts.dmMono }]}>{'> patronages_'}</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Season farm patronages</Text>
                   </View>
                   <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
                 </TouchableOpacity>

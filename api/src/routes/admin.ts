@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { eq, isNull, sql, and, lte, sum, gte, desc, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
-import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist, portalAccess, portalContent, tokens, tokenTrades, tokenTradeOffers } from '../db/schema';
+import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist, portalAccess, portalContent, tokens, tokenTrades, tokenTradeOffers, seasonPatronages, patronTokens } from '../db/schema';
 import { logger } from '../lib/logger';
 import { sendOrderReady, sendContractOffer, sendAuditionResult } from '../lib/resend';
 import { sendPushNotification } from '../lib/push';
@@ -1890,6 +1890,155 @@ router.post('/migrate/tokens', async (_req: Request, res: Response) => {
     res.json({ ok: true, message: 'Token migration complete' });
   } catch (err) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// Migration for season patronages
+router.post('/migrate/patronages', async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS season_patronages (
+        id serial PRIMARY KEY,
+        location_id integer NOT NULL,
+        season_year integer NOT NULL,
+        price_per_year_cents integer NOT NULL,
+        years_claimed integer,
+        patron_user_id integer REFERENCES users(id),
+        platform_cut_cents integer NOT NULL DEFAULT 0,
+        status text NOT NULL DEFAULT 'available',
+        stripe_payment_intent_id text,
+        claimed_at timestamp,
+        requested_by integer REFERENCES users(id),
+        approved_by_admin boolean NOT NULL DEFAULT false,
+        location_name text NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS patron_tokens (
+        id serial PRIMARY KEY,
+        patronage_id integer NOT NULL REFERENCES season_patronages(id),
+        patron_user_id integer NOT NULL REFERENCES users(id),
+        season_year integer NOT NULL,
+        location_name text NOT NULL,
+        nfc_token text UNIQUE,
+        minted_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    res.json({ ok: true, message: 'Patronage migration complete' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ─── Patronage admin endpoints ────────────────────────────────────────────────
+
+// GET /api/admin/patronages — all patronages with patron and requester display names
+router.get('/patronages', async (_req: Request, res: Response) => {
+  try {
+    const patronUser = { display_name: users.display_name };
+    const rows = await db.execute<{
+      id: number;
+      location_id: number;
+      location_name: string;
+      season_year: number;
+      price_per_year_cents: number;
+      years_claimed: number | null;
+      status: string;
+      patron_user_id: number | null;
+      approved_by_admin: boolean;
+      created_at: Date;
+      patron_display_name: string | null;
+      requester_display_name: string | null;
+    }>(sql`
+      SELECT
+        sp.id,
+        sp.location_id,
+        sp.location_name,
+        sp.season_year,
+        sp.price_per_year_cents,
+        sp.years_claimed,
+        sp.status,
+        sp.patron_user_id,
+        sp.approved_by_admin,
+        sp.created_at,
+        pu.display_name AS patron_display_name,
+        ru.display_name AS requester_display_name
+      FROM season_patronages sp
+      LEFT JOIN users pu ON pu.id = sp.patron_user_id
+      LEFT JOIN users ru ON ru.id = sp.requested_by
+      ORDER BY sp.created_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/patronages/:id/approve — approve and set price
+router.patch('/patronages/:id/approve', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'invalid_id' }); return; }
+  const { price_per_year_cents } = req.body;
+  if (typeof price_per_year_cents !== 'number') {
+    res.status(400).json({ error: 'price_per_year_cents is required' });
+    return;
+  }
+  try {
+    const [updated] = await db
+      .update(seasonPatronages)
+      .set({ approved_by_admin: true, price_per_year_cents })
+      .where(eq(seasonPatronages.id, id))
+      .returning();
+    if (!updated) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/patronages/:id/price — update price only
+router.patch('/patronages/:id/price', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'invalid_id' }); return; }
+  const { price_per_year_cents } = req.body;
+  if (typeof price_per_year_cents !== 'number') {
+    res.status(400).json({ error: 'price_per_year_cents is required' });
+    return;
+  }
+  try {
+    const [updated] = await db
+      .update(seasonPatronages)
+      .set({ price_per_year_cents })
+      .where(eq(seasonPatronages.id, id))
+      .returning();
+    if (!updated) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/patron-tokens — all patron tokens with patron display_name
+router.get('/patron-tokens', async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: patronTokens.id,
+        patronage_id: patronTokens.patronage_id,
+        patron_user_id: patronTokens.patron_user_id,
+        season_year: patronTokens.season_year,
+        location_name: patronTokens.location_name,
+        nfc_token: patronTokens.nfc_token,
+        minted_at: patronTokens.minted_at,
+        patron_display_name: users.display_name,
+      })
+      .from(patronTokens)
+      .leftJoin(users, eq(patronTokens.patron_user_id, users.id))
+      .orderBy(desc(patronTokens.minted_at));
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -3,7 +3,7 @@ import { eq, sql, and, desc } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import crypto from 'crypto';
 import { db } from '../db';
-import { orders, varieties, timeSlots, legitimacyEvents, users, referralCodes, locations } from '../db/schema';
+import { orders, varieties, timeSlots, legitimacyEvents, users, referralCodes, locations, seasonPatronages, patronTokens } from '../db/schema';
 import { stripe } from '../lib/stripe';
 import { sendOrderConfirmation } from '../lib/resend';
 import { logger } from '../lib/logger';
@@ -412,6 +412,7 @@ router.get('/:id/receipt', requireUser, async (req: Request, res: Response) => {
         id: orders.id,
         variety_name: varieties.name,
         price_cents: varieties.price_cents,
+        location_id: orders.location_id,
         location_name: locations.name,
         created_at: orders.created_at,
         nfc_token: orders.nfc_token,
@@ -437,6 +438,34 @@ router.get('/:id/receipt', requireUser, async (req: Request, res: Response) => {
       if (w) worker = w;
     }
 
+    // Look up season patron for this location and current year
+    let season_patron: { display_name: string | null; user_id: number } | null = null;
+    if (row.location_id !== null && row.location_id !== undefined) {
+      const currentYear = new Date().getFullYear();
+      const [patronageRow] = await db
+        .select({
+          patron_user_id: seasonPatronages.patron_user_id,
+          display_name: users.display_name,
+        })
+        .from(seasonPatronages)
+        .leftJoin(users, eq(seasonPatronages.patron_user_id, users.id))
+        .where(
+          and(
+            eq(seasonPatronages.location_id, row.location_id),
+            eq(seasonPatronages.season_year, currentYear),
+            eq(seasonPatronages.status, 'claimed'),
+          )
+        )
+        .limit(1);
+
+      if (patronageRow?.patron_user_id !== null && patronageRow?.patron_user_id !== undefined) {
+        season_patron = {
+          display_name: patronageRow.display_name ?? null,
+          user_id: patronageRow.patron_user_id,
+        };
+      }
+    }
+
     res.json({
       id: row.id,
       variety_name: row.variety_name,
@@ -445,6 +474,7 @@ router.get('/:id/receipt', requireUser, async (req: Request, res: Response) => {
       created_at: row.created_at,
       nfc_token: row.nfc_token,
       worker,
+      season_patron,
     });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

@@ -356,7 +356,8 @@
       { id:'revenue',   label:'Revenue' },
       { id:'editorial', label:'Editorial' },
       { id:'members',   label:'Members' },
-      { id:'portal',    label:'Portal' },
+      { id:'portal',      label:'Portal' },
+      { id:'patronages',  label:'Patronages' },
     ];
     document.getElementById('tab-row').innerHTML = tabs.map(t =>
       `<div class="tab ${t.id === currentTab ? 'active' : ''}" onclick="switchTab('${t.id}')">${t.label}</div>`
@@ -377,7 +378,8 @@
     else if (tab === 'revenue')    renderRevenueTab();
     else if (tab === 'editorial')  renderEditorialTab();
     else if (tab === 'members')    renderMembersTab();
-    else if (tab === 'portal')     loadPortalActivity();
+    else if (tab === 'portal')      loadPortalActivity();
+    else if (tab === 'patronages')  loadPatronages();
   }
 
   // ── ORDERS TAB ────────────────────────────────────────
@@ -2218,6 +2220,336 @@
       const err = await res.json().catch(() => ({}));
       resultEl.style.color = '#E05A5A';
       resultEl.textContent = err.error || 'Failed.';
+    }
+  }
+
+  // ── PATRONAGES TAB ────────────────────────────────────
+  let allPatronages = [];
+
+  function fmtCAD(cents) {
+    return 'CA$' + (cents / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function loadPatronages() {
+    const body = document.getElementById('dash-body');
+    body.innerHTML = '<div class="empty">Loading…</div>';
+    const res = await fetch(BASE + '/api/admin/patronages', { headers: { 'X-Admin-PIN': currentPin } });
+    if (!res.ok) { body.innerHTML = '<div class="empty">Failed to load patronages.</div>'; return; }
+    allPatronages = await res.json();
+    renderPatronagesTab();
+  }
+
+  function renderPatronagesTab() {
+    const body = document.getElementById('dash-body');
+
+    const total    = allPatronages.length;
+    const claimed  = allPatronages.filter(p => p.status === 'claimed').length;
+    const pending  = allPatronages.filter(p => !p.approved_by_admin).length;
+    const revenue  = allPatronages.reduce((s, p) => s + (p.platform_cut_cents || 0), 0);
+
+    const pendingApproval = allPatronages.filter(p => !p.approved_by_admin);
+    const activeListings  = allPatronages.filter(p => p.approved_by_admin);
+
+    // ── Summary cards ──
+    const summaryHtml = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div class="stat-card">
+          <div class="stat-value">${total}</div>
+          <div class="stat-label">TOTAL LISTED</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${claimed}</div>
+          <div class="stat-label">CLAIMED</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${pending}</div>
+          <div class="stat-label">PENDING APPROVAL</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${fmtCAD(revenue)}</div>
+          <div class="stat-label">TOTAL REVENUE</div>
+        </div>
+      </div>`;
+
+    // ── Pending Approval table ──
+    const thStyle = `padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);white-space:nowrap;`;
+    const tdStyle = `padding:10px 8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);`;
+    const tdMono  = `padding:10px 8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);`;
+
+    const pendingRows = pendingApproval.length === 0
+      ? `<tr><td colspan="5" style="text-align:center;padding:24px 0;color:var(--muted);font-style:italic;font-family:'DM Sans',sans-serif;font-size:14px;">No patronages pending approval.</td></tr>`
+      : pendingApproval.map(p => `<tr id="pat-pending-${p.id}">
+          <td style="${tdStyle}">${(p.location_name || '—').replace(/</g,'&lt;')}</td>
+          <td style="${tdMono}">${p.season_year || '—'}</td>
+          <td style="${tdMono}">${p.requested_price_per_year_cents != null ? fmtCAD(p.requested_price_per_year_cents) : '—'}</td>
+          <td style="${tdStyle}">${(p.requested_by_name || p.requested_by_email || '—').replace(/</g,'&lt;')}</td>
+          <td style="padding:10px 8px;">
+            <button class="action-btn primary" style="font-size:10px;padding:6px 14px;white-space:nowrap;"
+              onclick="openApprovePatronageModal(${p.id})">Approve + Set Price</button>
+          </td>
+        </tr>`).join('');
+
+    const pendingTableHtml = `
+      <div class="section-label">Pending Approval</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="${thStyle}">Location</th>
+              <th style="${thStyle}">Year</th>
+              <th style="${thStyle}">Requested Price/yr</th>
+              <th style="${thStyle}">Requested By</th>
+              <th style="${thStyle}">Actions</th>
+            </tr>
+          </thead>
+          <tbody>${pendingRows}</tbody>
+        </table>
+      </div>`;
+
+    // ── Active Listings table ──
+    const activeRows = activeListings.length === 0
+      ? `<tr><td colspan="8" style="text-align:center;padding:24px 0;color:var(--muted);font-style:italic;font-family:'DM Sans',sans-serif;font-size:14px;">No active listings.</td></tr>`
+      : activeListings.map(p => {
+          let badgeHtml;
+          if (p.status === 'claimed') {
+            badgeHtml = `<span class="status-badge" style="background:rgba(80,200,120,0.12);color:rgba(100,210,140,0.9);">Claimed</span>`;
+          } else if (p.status === 'available') {
+            badgeHtml = `<span class="status-badge" style="background:rgba(201,151,58,0.18);color:#D4A843;">Available</span>`;
+          } else {
+            badgeHtml = `<span class="status-badge" style="background:rgba(255,255,255,0.06);color:rgba(242,242,247,0.4);">${p.status || 'Pending'}</span>`;
+          }
+          const adjustBtn = p.status === 'available'
+            ? `<button class="action-btn" style="font-size:10px;padding:6px 12px;white-space:nowrap;" onclick="openAdjustPriceModal(${p.id},${p.price_per_year_cents || 0})">Adjust Price</button>`
+            : '—';
+          const patronCell = p.patron_name || p.patron_email
+            ? (p.patron_name || p.patron_email).replace(/</g,'&lt;')
+            : '—';
+          return `<tr>
+            <td style="${tdStyle}">${(p.location_name || '—').replace(/</g,'&lt;')}</td>
+            <td style="${tdMono}">${p.season_year || '—'}</td>
+            <td style="${tdMono}">${p.price_per_year_cents != null ? fmtCAD(p.price_per_year_cents) : '—'}</td>
+            <td style="padding:10px 8px;">${badgeHtml}</td>
+            <td style="${tdStyle}">${patronCell}</td>
+            <td style="${tdMono}">${p.years_claimed != null ? p.years_claimed : '—'}</td>
+            <td style="${tdMono}">${p.platform_cut_cents != null ? fmtCAD(p.platform_cut_cents) : '—'}</td>
+            <td style="padding:10px 8px;">${adjustBtn}</td>
+          </tr>`;
+        }).join('');
+
+    const activeTableHtml = `
+      <div class="section-label" style="margin-top:8px;">Active Listings</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="${thStyle}">Location</th>
+              <th style="${thStyle}">Year</th>
+              <th style="${thStyle}">Price/yr</th>
+              <th style="${thStyle}">Status</th>
+              <th style="${thStyle}">Patron</th>
+              <th style="${thStyle}">Years Claimed</th>
+              <th style="${thStyle}">Revenue</th>
+              <th style="${thStyle}">Actions</th>
+            </tr>
+          </thead>
+          <tbody>${activeRows}</tbody>
+        </table>
+      </div>`;
+
+    // ── Patron Tokens (lazy) ──
+    const patronTokensHtml = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;margin-bottom:8px;">
+        <div class="section-label" style="margin:0;">Patron Tokens</div>
+        <button class="action-btn" onclick="loadPatronTokens()" style="flex-shrink:0;">Load Patron Tokens</button>
+      </div>
+      <div id="patron-tokens-container"></div>`;
+
+    body.innerHTML = summaryHtml + pendingTableHtml + activeTableHtml + patronTokensHtml;
+  }
+
+  async function loadPatronTokens() {
+    const container = document.getElementById('patron-tokens-container');
+    if (!container) return;
+    container.innerHTML = '<div class="empty">Loading…</div>';
+    const res = await fetch(BASE + '/api/admin/patron-tokens', { headers: { 'X-Admin-PIN': currentPin } });
+    if (!res.ok) { container.innerHTML = '<div class="empty">Failed to load patron tokens.</div>'; return; }
+    const tokens = await res.json();
+    if (!tokens.length) { container.innerHTML = '<div class="empty">No patron tokens yet.</div>'; return; }
+
+    const thStyle = `padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);white-space:nowrap;`;
+    const tdStyle = `padding:10px 8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);`;
+    const tdMono  = `padding:10px 8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);`;
+
+    const rows = tokens.map(t => {
+      const nfcBadge = t.nfc_written
+        ? `<span class="status-badge" style="background:rgba(80,200,120,0.12);color:rgba(100,210,140,0.9);">Written</span>`
+        : `<span class="status-badge" style="background:rgba(201,151,58,0.18);color:#D4A843;">Pending</span>`;
+      return `<tr>
+        <td style="${tdMono}">${t.season_year || '—'}</td>
+        <td style="${tdStyle}">${(t.location_name || '—').replace(/</g,'&lt;')}</td>
+        <td style="${tdStyle}">${(t.patron_name || t.patron_email || '—').replace(/</g,'&lt;')}</td>
+        <td style="${tdMono}">${fmtDate(t.minted_at || t.created_at)}</td>
+        <td style="padding:10px 8px;">${nfcBadge}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="${thStyle}">Season Year</th>
+              <th style="${thStyle}">Location</th>
+              <th style="${thStyle}">Patron</th>
+              <th style="${thStyle}">Minted Date</th>
+              <th style="${thStyle}">NFC Status</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  function openApprovePatronageModal(id) {
+    const p = allPatronages.find(x => x.id === id);
+    const existing = document.getElementById('approve-patronage-modal');
+    if (existing) existing.remove();
+
+    const locationName = p ? (p.location_name || '—') : '—';
+    const seasonYear   = p ? (p.season_year   || '—') : '—';
+    const prefillCents = p && p.requested_price_per_year_cents != null ? p.requested_price_per_year_cents : 0;
+    const prefillDollars = (prefillCents / 100).toFixed(2);
+
+    const modal = document.createElement('div');
+    modal.id = 'approve-patronage-modal';
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:440px;">
+        <div class="modal-header">
+          <div class="modal-title">Approve Patronage</div>
+          <button class="modal-close" onclick="closeApprovePatronageModal()">×</button>
+        </div>
+        <div class="modal-body" style="gap:14px;">
+          <div class="modal-summary">Location: ${locationName.replace(/</g,'&lt;')}</div>
+          <div class="modal-summary">Season Year: ${seasonYear}</div>
+          <div class="form-row">
+            <div class="form-label">Final Price per Year: CA$</div>
+            <input class="form-input" id="approve-pat-price" type="number" step="0.01" min="0"
+              value="${prefillDollars}" />
+          </div>
+          <div class="action-row">
+            <button class="action-btn primary" onclick="submitApprovePatronage(${id})">Approve</button>
+            <button class="action-btn" onclick="closeApprovePatronageModal()">Cancel</button>
+          </div>
+          <div id="approve-pat-result" style="font-family:'DM Mono',monospace;font-size:12px;min-height:16px;"></div>
+        </div>
+      </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) closeApprovePatronageModal(); });
+    document.body.appendChild(modal);
+    document.getElementById('approve-pat-price').focus();
+  }
+
+  function closeApprovePatronageModal() {
+    const modal = document.getElementById('approve-patronage-modal');
+    if (modal) modal.remove();
+  }
+
+  async function submitApprovePatronage(id) {
+    const resultEl = document.getElementById('approve-pat-result');
+    const priceEl  = document.getElementById('approve-pat-price');
+    const dollars  = parseFloat(priceEl ? priceEl.value : '');
+    if (isNaN(dollars) || dollars < 0) {
+      resultEl.style.color = '#E05A5A';
+      resultEl.textContent = 'Enter a valid price.';
+      return;
+    }
+    const price_per_year_cents = Math.round(dollars * 100);
+    resultEl.style.color = 'var(--muted)';
+    resultEl.textContent = 'Approving…';
+
+    const res = await fetch(`${BASE}/api/admin/patronages/${id}/approve`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ price_per_year_cents }),
+    });
+
+    if (res.ok) {
+      closeApprovePatronageModal();
+      await loadPatronages();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      resultEl.style.color = '#E05A5A';
+      resultEl.textContent = err.error || 'Failed to approve.';
+    }
+  }
+
+  function openAdjustPriceModal(id, currentCents) {
+    const existing = document.getElementById('adjust-price-modal');
+    if (existing) existing.remove();
+
+    const p = allPatronages.find(x => x.id === id);
+    const locationName = p ? (p.location_name || `Patronage #${id}`) : `Patronage #${id}`;
+    const prefillDollars = (currentCents / 100).toFixed(2);
+
+    const modal = document.createElement('div');
+    modal.id = 'adjust-price-modal';
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal-box" style="max-width:400px;">
+        <div class="modal-header">
+          <div class="modal-title">Adjust Price</div>
+          <button class="modal-close" onclick="closeAdjustPriceModal()">×</button>
+        </div>
+        <div class="modal-body" style="gap:14px;">
+          <div class="modal-summary">${locationName.replace(/</g,'&lt;')}</div>
+          <div class="form-row">
+            <div class="form-label">New Price per Year: CA$</div>
+            <input class="form-input" id="adjust-price-value" type="number" step="0.01" min="0"
+              value="${prefillDollars}" />
+          </div>
+          <div class="action-row">
+            <button class="action-btn primary" onclick="submitAdjustPrice(${id})">Save</button>
+            <button class="action-btn" onclick="closeAdjustPriceModal()">Cancel</button>
+          </div>
+          <div id="adjust-price-result" style="font-family:'DM Mono',monospace;font-size:12px;min-height:16px;"></div>
+        </div>
+      </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) closeAdjustPriceModal(); });
+    document.body.appendChild(modal);
+    document.getElementById('adjust-price-value').focus();
+  }
+
+  function closeAdjustPriceModal() {
+    const modal = document.getElementById('adjust-price-modal');
+    if (modal) modal.remove();
+  }
+
+  async function submitAdjustPrice(id) {
+    const resultEl = document.getElementById('adjust-price-result');
+    const priceEl  = document.getElementById('adjust-price-value');
+    const dollars  = parseFloat(priceEl ? priceEl.value : '');
+    if (isNaN(dollars) || dollars < 0) {
+      resultEl.style.color = '#E05A5A';
+      resultEl.textContent = 'Enter a valid price.';
+      return;
+    }
+    const price_per_year_cents = Math.round(dollars * 100);
+    resultEl.style.color = 'var(--muted)';
+    resultEl.textContent = 'Saving…';
+
+    const res = await fetch(`${BASE}/api/admin/patronages/${id}/price`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ price_per_year_cents }),
+    });
+
+    if (res.ok) {
+      closeAdjustPriceModal();
+      await loadPatronages();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      resultEl.style.color = '#E05A5A';
+      resultEl.textContent = err.error || 'Failed to adjust price.';
     }
   }
 

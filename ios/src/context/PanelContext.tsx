@@ -45,7 +45,9 @@ export type PanelId =
   | 'receipt'
   | 'my-tokens'
   | 'token-detail'
-  | 'token-offers';
+  | 'token-offers'
+  | 'patronages'
+  | 'patronage-detail';
 
 export interface OrderState {
   variety_id: number | null;

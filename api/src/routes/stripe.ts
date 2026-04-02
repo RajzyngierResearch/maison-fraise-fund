@@ -4,7 +4,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { stripe } from '../lib/stripe';
 import { db } from '../db';
-import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions, portalAccess, tokens } from '../db/schema';
+import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions, portalAccess, tokens, seasonPatronages, patronTokens } from '../db/schema';
 import { sendPushNotification } from '../lib/push';
 import { sendRsvpConfirmed, sendOrderConfirmation, sendTipReceived } from '../lib/resend';
 import { logger } from '../lib/logger';
@@ -330,6 +330,49 @@ router.post('/webhook', async (req: Request, res: Response) => {
             data: { screen: 'membership' },
           }).catch(() => {});
         }
+      } else if (type === 'patronage_claim') {
+        const patronageId = parseInt(pi.metadata.patronage_id);
+        const userId = parseInt(pi.metadata.user_id);
+        const years = parseInt(pi.metadata.years);
+        const locationName = pi.metadata.location_name;
+
+        // Update patronage: mark claimed
+        await db.update(seasonPatronages).set({
+          status: 'claimed',
+          patron_user_id: userId,
+          years_claimed: years,
+          platform_cut_cents: Math.round(pi.amount * 0.20),
+          stripe_payment_intent_id: pi.id,
+          claimed_at: new Date(),
+        }).where(eq(seasonPatronages.id, patronageId));
+
+        // Get patronage to find actual season_year
+        const [patronage] = await db.select().from(seasonPatronages).where(eq(seasonPatronages.id, patronageId));
+        const baseYear = patronage?.season_year ?? new Date().getFullYear();
+
+        // Mint one patron token per year claimed
+        for (let i = 0; i < years; i++) {
+          await db.insert(patronTokens).values({
+            patronage_id: patronageId,
+            patron_user_id: userId,
+            season_year: baseYear + i,
+            location_name: locationName,
+          });
+        }
+
+        // Push notification
+        const [patronUser] = await db.select({ push_token: users.push_token }).from(users).where(eq(users.id, userId));
+        if (patronUser?.push_token) {
+          const endYear = baseYear + years - 1;
+          const yearRange = years === 1 ? String(baseYear) : `${baseYear}–${endYear}`;
+          sendPushNotification(patronUser.push_token, {
+            title: 'Season patronage confirmed',
+            body: `${locationName} ${yearRange}. ${years} patron token${years !== 1 ? 's' : ''} minted.`,
+            data: { screen: 'patronages' },
+          }).catch(() => {});
+        }
+
+        logger.info(`Patronage ${patronageId} claimed by user ${userId} for ${years} year(s)`);
       } else if (type === 'portal_access') {
         const buyerId = parseInt(pi.metadata.buyer_id, 10);
         const ownerId = parseInt(pi.metadata.owner_id, 10);
@@ -385,6 +428,9 @@ router.post('/webhook', async (req: Request, res: Response) => {
         await db.update(popupRequests).set({ status: 'cancelled' }).where(eq(popupRequests.stripe_payment_intent_id, pi.id));
       } else if (type === 'campaign_commission') {
         await db.update(campaignCommissions).set({ status: 'cancelled' }).where(eq(campaignCommissions.stripe_payment_intent_id, pi.id));
+      } else if (type === 'patronage_claim') {
+        // Release the hold so the patronage can be claimed again
+        await db.update(seasonPatronages).set({ status: 'available' }).where(eq(seasonPatronages.stripe_payment_intent_id, pi.id));
       }
     }
   } catch (err) {

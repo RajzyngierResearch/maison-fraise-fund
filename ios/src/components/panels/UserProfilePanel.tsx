@@ -3,6 +3,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, Image,
   StyleSheet,
 } from 'react-native';
+import { PatronTokenCard } from '../PatronTokenCard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePanel } from '../../context/PanelContext';
 import {
@@ -130,6 +131,8 @@ export default function UserProfilePanel() {
   const workerStatus = profile?.worker_status ?? null;
   const portalOptedIn = profile?.portal_opted_in ?? false;
   const editorialPieces: any[] = profile?.editorial_pieces ?? [];
+  const patronTokens: any[] = profile?.patron_tokens ?? [];
+  const isPatron: boolean = profile?.is_patron ?? false;
 
   const showFollowBtn = currentUserId !== null && userId !== null && currentUserId !== userId;
 
@@ -168,9 +171,16 @@ export default function UserProfilePanel() {
             {/* Name and tier */}
             <Text style={[styles.nameText, { color: c.text }]}>{displayName.toUpperCase()}</Text>
             {tier ? (
-              <Text style={[styles.tierText, { color: c.muted }]}>
-                {`Maison · ${tier.charAt(0).toUpperCase() + tier.slice(1)}`}
-              </Text>
+              <View style={styles.tierRow}>
+                <Text style={[styles.tierText, { color: c.muted }]}>
+                  {`Maison · ${tier.charAt(0).toUpperCase() + tier.slice(1)}`}
+                </Text>
+                {isPatron && (
+                  <View style={styles.patronBadge}>
+                    <Text style={styles.patronBadgeText}>{'PATRON'}</Text>
+                  </View>
+                )}
+              </View>
             ) : null}
             {workerStatus ? (
               <Text style={[styles.workerText, { color: c.muted }]}>
@@ -217,6 +227,29 @@ export default function UserProfilePanel() {
                     </TouchableOpacity>
                   </View>
                 ))}
+              </>
+            )}
+
+            {/* Patron tokens section */}
+            {patronTokens.length > 0 && (
+              <>
+                <Text style={[styles.separator, { color: c.border }]}>{'────────────────────────────────'}</Text>
+                <Text style={[styles.sectionHeader, { color: c.muted }]}>
+                  {`PATRON TOKENS [${patronTokens.length}]`}
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tokenScrollRow}>
+                  {patronTokens.map((pt: any, i: number) => (
+                    <PatronTokenCard
+                      key={pt.token_id ?? i}
+                      data={{
+                        tokenId: pt.token_id ?? i,
+                        locationName: pt.location_name ?? '',
+                        year: pt.year ?? 0,
+                        patronHandle: handle.replace('@', ''),
+                      }}
+                    />
+                  ))}
+                </ScrollView>
               </>
             )}
 
@@ -287,8 +320,17 @@ const styles = StyleSheet.create({
   initialsText: { fontFamily: fonts.dmMono, fontSize: 28, color: '#fff' },
 
   nameText: { fontFamily: fonts.dmMono, fontSize: 15, letterSpacing: 2 },
+  tierRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   tierText: { fontFamily: fonts.dmMono, fontSize: 12 },
+  patronBadge: {
+    backgroundColor: '#D4A843',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  patronBadgeText: { fontFamily: fonts.dmMono, fontSize: 9, color: '#fff', letterSpacing: 1 },
   workerText: { fontFamily: fonts.dmMono, fontSize: 12 },
+  tokenScrollRow: { marginTop: 4 },
 
   followBtn: {
     alignSelf: 'flex-start',

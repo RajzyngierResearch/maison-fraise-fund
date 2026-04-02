@@ -89,6 +89,17 @@ export default function ReceiptPanel() {
               </Text>
             </View>
 
+            {receipt.season_patron && (
+              <>
+                <Text style={[styles.separator, { color: c.border }]}>{'────────────────────────────────'}</Text>
+                <Text style={[styles.sectionHeader, { color: c.muted }]}>{'SEASON PATRON'}</Text>
+                <Text style={[styles.patronNote, { color: c.muted }]}>{'This harvest was funded by'}</Text>
+                <Text style={[styles.patronHandle, { color: c.accent }]}>
+                  {`@${receipt.season_patron}`}
+                </Text>
+              </>
+            )}
+
             {worker && (
               <>
                 <Text style={[styles.separator, { color: c.border }]}>{'────────────────────────────────'}</Text>
@@ -172,4 +183,6 @@ const styles = StyleSheet.create({
   actionLine: { flexDirection: 'row', alignItems: 'center' },
   actionText: { fontFamily: fonts.dmMono, fontSize: 13 },
   mutedText: { fontFamily: fonts.dmMono, fontSize: 12 },
+  patronNote: { fontFamily: fonts.dmMono, fontSize: 12 },
+  patronHandle: { fontFamily: fonts.dmMono, fontSize: 13 },
 });

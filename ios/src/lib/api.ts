@@ -1115,3 +1115,31 @@ export async function placeStandingOrderFromFund(
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'fund_order_failed'); }
   return r.json();
 }
+
+// ─── Patronage API ────────────────────────────────────────────────────────────
+
+export async function fetchPatronages(): Promise<any[]> {
+  const r = await fetch(`${BASE_URL}/api/patronages`);
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function fetchPatronage(id: number): Promise<any> {
+  const r = await fetch(`${BASE_URL}/api/patronages/${id}`);
+  if (!r.ok) throw new Error('patronage_not_found');
+  return r.json();
+}
+
+export async function claimPatronage(
+  id: number,
+  years: 1 | 2 | 3 | 5 | 10,
+): Promise<{ client_secret: string; total_cents: number; years: number; price_per_year_cents: number }> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/patronages/${id}/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({ years }),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'claim_failed'); }
+  return r.json();
+}
