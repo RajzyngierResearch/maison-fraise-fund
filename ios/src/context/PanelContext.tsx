@@ -26,7 +26,10 @@ export type PanelId =
   | 'user-profile'
   | 'order-history'
   | 'notification-inbox'
-  | 'activity-feed';
+  | 'activity-feed'
+  | 'search'
+  | 'following-list'
+  | 'nomination-history';
 
 export interface OrderState {
   variety_id: number | null;

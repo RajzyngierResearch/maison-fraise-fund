@@ -560,3 +560,43 @@ export async function markNotificationRead(notificationId: number) {
   if (!res.ok) throw new Error('Failed to mark read');
   return res.json();
 }
+
+export async function updateDisplayName(userId: number, display_name: string) {
+  const res = await fetch(`${BASE_URL}/api/users/me/display-name`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-User-ID': String(userId) },
+    body: JSON.stringify({ display_name }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error ?? 'Failed to update name'); }
+  return res.json() as Promise<{ success: boolean; display_name: string }>;
+}
+
+export async function searchUsers(q: string) {
+  const res = await fetch(`${BASE_URL}/api/users/search?q=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error('Search failed');
+  return res.json() as Promise<{ id: number; display_name: string; is_dj: boolean; verified: boolean }[]>;
+}
+
+export async function fetchFollowing(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/following`);
+  if (!res.ok) throw new Error('Failed to fetch following');
+  return res.json() as Promise<{ id: number; display_name: string; is_dj: boolean }[]>;
+}
+
+export async function fetchFollowersList(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/followers-list`);
+  if (!res.ok) throw new Error('Failed to fetch followers');
+  return res.json() as Promise<{ id: number; display_name: string; is_dj: boolean }[]>;
+}
+
+export async function fetchNominationsGiven(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/nominations-given`);
+  if (!res.ok) throw new Error('Failed to fetch nominations given');
+  return res.json() as Promise<{ id: number; popup_name: string; popup_starts_at: string | null; nominee_id: number; nominee_name: string; created_at: string }[]>;
+}
+
+export async function fetchNominationsReceived(userId: number) {
+  const res = await fetch(`${BASE_URL}/api/users/${userId}/nominations-received`);
+  if (!res.ok) throw new Error('Failed to fetch nominations received');
+  return res.json() as Promise<{ id: number; popup_name: string; popup_starts_at: string | null; nominator_id: number; nominator_name: string; created_at: string }[]>;
+}

@@ -174,6 +174,35 @@ router.patch('/varieties/:id/stock', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/admin/varieties — all varieties with location info
+router.get('/varieties', async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(varieties);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/varieties/:id — update variety fields
+router.patch('/varieties/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+  const allowed = ['name', 'description', 'price_cents', 'active', 'location_id', 'tag', 'source_farm'];
+  const body: any = {};
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) body[key] = req.body[key];
+  }
+  if (Object.keys(body).length === 0) { res.status(400).json({ error: 'No valid fields to update' }); return; }
+  try {
+    const [updated] = await db.update(varieties).set(body).where(eq(varieties.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: 'Variety not found' }); return; }
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/admin/campaigns
 router.post('/campaigns', async (req: Request, res: Response) => {
   const { title, concept, salon_id, paying_client_id, date, total_spots } = req.body;
@@ -625,6 +654,8 @@ router.post('/migrate', async (_req: Request, res: Response) => {
       )
     `);
 
+    await db.execute(sql`ALTER TABLE varieties ADD COLUMN IF NOT EXISTS location_id integer REFERENCES locations(id)`);
+
     res.json({ ok: true, message: 'Migration complete' });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -886,6 +917,83 @@ router.get('/contracts/expiring-soon', async (_req: Request, res: Response) => {
       ...r,
       display_name: r.display_name ?? r.email.split('@')[0],
     })));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/time-slots?location_id=&date=
+router.get('/time-slots', async (req: Request, res: Response) => {
+  const location_id = req.query.location_id ? parseInt(String(req.query.location_id), 10) : null;
+  const date = req.query.date ? String(req.query.date) : null;
+  try {
+    let query = db.select({
+      id: timeSlots.id,
+      location_id: timeSlots.location_id,
+      location_name: locations.name,
+      date: timeSlots.date,
+      time: timeSlots.time,
+      capacity: timeSlots.capacity,
+      booked: timeSlots.booked,
+      created_at: timeSlots.created_at,
+    })
+    .from(timeSlots)
+    .innerJoin(locations, eq(timeSlots.location_id, locations.id));
+
+    const conditions = [];
+    if (location_id) conditions.push(eq(timeSlots.location_id, location_id));
+    if (date) conditions.push(eq(timeSlots.date, date));
+
+    const rows = conditions.length > 0
+      ? await query.where(and(...conditions as [any, ...any[]])).orderBy(timeSlots.date, timeSlots.time)
+      : await query.orderBy(timeSlots.date, timeSlots.time);
+
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/time-slots — create time slot(s)
+router.post('/time-slots', async (req: Request, res: Response) => {
+  const { location_id, date, time, capacity } = req.body;
+  if (!location_id || !date || !time || !capacity) {
+    res.status(400).json({ error: 'location_id, date, time, capacity are required' });
+    return;
+  }
+  try {
+    const [slot] = await db.insert(timeSlots).values({ location_id, date, time, capacity, booked: 0 }).returning();
+    res.status(201).json(slot);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/time-slots/:id
+router.patch('/time-slots/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+  const { capacity, booked } = req.body;
+  const body: any = {};
+  if (capacity !== undefined) body.capacity = capacity;
+  if (booked !== undefined) body.booked = booked;
+  if (Object.keys(body).length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+  try {
+    const [updated] = await db.update(timeSlots).set(body).where(eq(timeSlots.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/admin/time-slots/:id
+router.delete('/time-slots/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+  try {
+    await db.delete(timeSlots).where(eq(timeSlots.id, id));
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

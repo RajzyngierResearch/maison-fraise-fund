@@ -40,19 +40,40 @@ router.get('/me', async (req: Request, res: Response) => {
 // GET /api/users/search?q= — verified users only
 router.get('/search', async (req: Request, res: Response) => {
   const q = String(req.query.q ?? '').trim();
-  if (!q) {
-    res.status(400).json({ error: 'q query parameter is required' });
+  if (q.length < 2) {
+    res.status(400).json({ error: 'q must be at least 2 characters' });
     return;
   }
-
   try {
     const rows = await db
-      .select({ id: users.id, verified: users.verified, created_at: users.created_at })
+      .select({ id: users.id, display_name: users.display_name, email: users.email, verified: users.verified, is_dj: users.is_dj })
       .from(users)
-      .where(eq(users.verified, true));
+      .where(
+        sql`(${users.display_name} ILIKE ${'%' + q + '%'} OR ${users.email} ILIKE ${'%' + q + '%'}) AND ${users.verified} = true`
+      )
+      .limit(20);
+    res.json(rows.map(r => ({
+      ...r,
+      display_name: r.display_name ?? r.email.split('@')[0],
+    })));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
-    const filtered = rows.filter(u => String(u.id).includes(q));
-    res.json(filtered);
+// PATCH /api/users/me/display-name — update logged-in user's display name
+router.patch('/me/display-name', async (req: Request, res: Response) => {
+  const rawId = req.headers['x-user-id'];
+  const user_id = parseInt(String(rawId), 10);
+  if (isNaN(user_id)) { res.status(400).json({ error: 'X-User-ID header required' }); return; }
+  const { display_name } = req.body;
+  if (!display_name || typeof display_name !== 'string' || display_name.trim().length < 2) {
+    res.status(400).json({ error: 'display_name must be at least 2 characters' });
+    return;
+  }
+  try {
+    const [updated] = await db.update(users).set({ display_name: display_name.trim() }).where(eq(users.id, user_id)).returning();
+    res.json({ success: true, display_name: updated.display_name });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -533,6 +554,118 @@ router.get('/feed', async (req: Request, res: Response) => {
     allItems.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
 
     res.json(allItems.slice(0, 30));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/following — list of users this user follows
+router.get('/:id/following', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) { res.status(400).json({ error: 'Invalid user id' }); return; }
+  try {
+    // alias users table for the followee
+    const followees = await db
+      .select({ id: users.id, display_name: users.display_name, email: users.email, is_dj: users.is_dj })
+      .from(userFollows)
+      .innerJoin(users, eq(userFollows.followee_id, users.id))
+      .where(eq(userFollows.follower_id, user_id))
+      .orderBy(desc(userFollows.created_at));
+    res.json(followees.map(u => ({ ...u, display_name: u.display_name ?? u.email.split('@')[0] })));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/followers-list — list of users who follow this user
+router.get('/:id/followers-list', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) { res.status(400).json({ error: 'Invalid user id' }); return; }
+  try {
+    // We need to join on follower side — use aliased query
+    const rows = await db
+      .select({ id: userFollows.follower_id, created_at: userFollows.created_at })
+      .from(userFollows)
+      .where(eq(userFollows.followee_id, user_id))
+      .orderBy(desc(userFollows.created_at));
+
+    // Fetch user details for each follower
+    if (rows.length === 0) { res.json([]); return; }
+    const followerIds = rows.map(r => r.id);
+    const followerUsers = await db
+      .select({ id: users.id, display_name: users.display_name, email: users.email, is_dj: users.is_dj })
+      .from(users)
+      .where(inArray(users.id, followerIds));
+
+    const map = Object.fromEntries(followerUsers.map(u => [u.id, u]));
+    res.json(rows.map(r => {
+      const u = map[r.id];
+      return u ? { ...u, display_name: u.display_name ?? u.email.split('@')[0] } : null;
+    }).filter(Boolean));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/nominations-given — nominations this user has made
+router.get('/:id/nominations-given', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) { res.status(400).json({ error: 'Invalid user id' }); return; }
+  try {
+    const rows = await db
+      .select({
+        id: popupNominations.id,
+        popup_id: popupNominations.popup_id,
+        popup_name: businesses.name,
+        popup_starts_at: businesses.starts_at,
+        nominee_id: popupNominations.nominee_id,
+        nominee_name: users.display_name,
+        nominee_email: users.email,
+        created_at: popupNominations.created_at,
+      })
+      .from(popupNominations)
+      .innerJoin(businesses, eq(popupNominations.popup_id, businesses.id))
+      .innerJoin(users, eq(popupNominations.nominee_id, users.id))
+      .where(eq(popupNominations.nominator_id, user_id))
+      .orderBy(desc(popupNominations.created_at));
+    res.json(rows.map(r => ({ ...r, nominee_name: r.nominee_name ?? r.nominee_email.split('@')[0] })));
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/:id/nominations-received — nominations this user has received
+router.get('/:id/nominations-received', async (req: Request, res: Response) => {
+  const user_id = parseInt(req.params.id, 10);
+  if (isNaN(user_id)) { res.status(400).json({ error: 'Invalid user id' }); return; }
+  try {
+    // Need nominator info — join users twice
+    // Use raw sql approach since drizzle doesn't easily alias tables
+    const rows = await db
+      .select({
+        id: popupNominations.id,
+        popup_id: popupNominations.popup_id,
+        popup_name: businesses.name,
+        popup_starts_at: businesses.starts_at,
+        nominator_id: popupNominations.nominator_id,
+        created_at: popupNominations.created_at,
+      })
+      .from(popupNominations)
+      .innerJoin(businesses, eq(popupNominations.popup_id, businesses.id))
+      .where(eq(popupNominations.nominee_id, user_id))
+      .orderBy(desc(popupNominations.created_at));
+
+    // Fetch nominator names separately
+    const nominatorIds = [...new Set(rows.map(r => r.nominator_id))];
+    const nominators = nominatorIds.length > 0
+      ? await db.select({ id: users.id, display_name: users.display_name, email: users.email }).from(users).where(inArray(users.id, nominatorIds))
+      : [];
+    const nominatorMap = Object.fromEntries(nominators.map(u => [u.id, u]));
+
+    res.json(rows.map(r => {
+      const nom = nominatorMap[r.nominator_id];
+      return { ...r, nominator_name: nom ? (nom.display_name ?? nom.email.split('@')[0]) : 'Unknown' };
+    }));
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

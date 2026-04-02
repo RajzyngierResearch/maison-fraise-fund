@@ -12,7 +12,7 @@ import {
   cancelStandingOrder, fetchOrdersByEmail,
   fetchUserPopupRsvps, fetchDjGigs, fetchDjAllocations, registerAsDj,
   fetchHostedPopups, fetchActiveContract, fetchFollowerCount, logMemberVisit,
-  fetchLegitimacyBreakdown,
+  fetchLegitimacyBreakdown, updateDisplayName,
 } from '../../lib/api';
 import { CHOCOLATES, FINISHES } from '../../data/seed';
 import { useColors, fonts } from '../../theme';
@@ -42,6 +42,7 @@ export default function ProfilePanel() {
   const [followerCount, setFollowerCount] = useState<number>(0);
   const [loggingVisit, setLoggingVisit] = useState(false);
   const [legitimacy, setLegitimacy] = useState<{ total: number; breakdown: { event_type: string; total: number; count: number }[] } | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -50,7 +51,9 @@ export default function ProfilePanel() {
       AsyncStorage.getItem('user_db_id'),
       AsyncStorage.getItem('is_dj'),
       AppleAuthentication.isAvailableAsync().catch(() => false),
-    ]).then(([email, verified, dbId, djFlag, available]) => {
+      AsyncStorage.getItem('display_name'),
+    ]).then(([email, verified, dbId, djFlag, available, storedDisplayName]) => {
+      if (storedDisplayName) setDisplayName(storedDisplayName);
       const verifiedBool = verified === 'true';
       setIsVerifiedState(verifiedBool);
       setAppleAvailable(available as boolean);
@@ -206,6 +209,17 @@ export default function ProfilePanel() {
     ]);
   };
 
+  const handleEditName = () => {
+    Alert.prompt('Display name', 'Enter your name', async (name) => {
+      if (!name || name.trim().length < 2 || !userDbId) return;
+      try {
+        await updateDisplayName(userDbId, name.trim());
+        await AsyncStorage.setItem('display_name', name.trim());
+        setDisplayName(name.trim());
+      } catch {}
+    });
+  };
+
   const lastOrder = recentOrders[0] ?? null;
 
   const handleOrderAgain = () => {
@@ -288,6 +302,62 @@ export default function ProfilePanel() {
             {/* Quick access */}
             {userDbId && (
               <View style={[styles.verifiedActions, { borderColor: c.border }]}>
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={handleEditName}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.text }]}>Edit name</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>{displayName ?? 'Set your display name'}</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={() => showPanel('search')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.text }]}>Search</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Find other members</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={() => showPanel('following-list')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.text }]}>Connections</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Following and followers</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={() => showPanel('nomination-history')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.text }]}>Nominations</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Given and received</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
                 <TouchableOpacity
                   style={styles.actionRow}
                   onPress={() => showPanel('order-history')}

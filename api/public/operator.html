@@ -306,12 +306,14 @@
   // ── ADMIN TABS ────────────────────────────────────────
   function buildAdminTabs() {
     const tabs = [
-      { id:'orders',   label:'Orders' },
-      { id:'popups',   label:'Popups' },
-      { id:'requests', label:'Requests' },
-      { id:'portraits',label:'Portraits' },
-      { id:'talent',   label:'Talent' },
-      { id:'revenue',  label:'Revenue' },
+      { id:'orders',    label:'Orders' },
+      { id:'popups',    label:'Popups' },
+      { id:'requests',  label:'Requests' },
+      { id:'portraits', label:'Portraits' },
+      { id:'slots',     label:'Slots' },
+      { id:'varieties', label:'Varieties' },
+      { id:'talent',    label:'Talent' },
+      { id:'revenue',   label:'Revenue' },
     ];
     document.getElementById('tab-row').innerHTML = tabs.map(t =>
       `<div class="tab ${t.id === currentTab ? 'active' : ''}" onclick="switchTab('${t.id}')">${t.label}</div>`
@@ -322,11 +324,13 @@
     currentTab = tab;
     buildAdminTabs();
     if (tab === 'orders')    renderAdmin();
-    else if (tab === 'popups')    renderPopupsTab();
-    else if (tab === 'requests')  renderRequestsTab();
-    else if (tab === 'portraits') renderPortraitsTab();
-    else if (tab === 'talent')   renderTalentTab();
-    else if (tab === 'revenue')  renderRevenueTab();
+    else if (tab === 'popups')     renderPopupsTab();
+    else if (tab === 'requests')   renderRequestsTab();
+    else if (tab === 'portraits')  renderPortraitsTab();
+    else if (tab === 'slots')      renderSlotsTab();
+    else if (tab === 'varieties')  renderVarietiesTab();
+    else if (tab === 'talent')     renderTalentTab();
+    else if (tab === 'revenue')    renderRevenueTab();
   }
 
   // ── ORDERS TAB ────────────────────────────────────────
@@ -895,6 +899,201 @@
   }
 
   document.getElementById('pin-input').addEventListener('keydown', e => { if (e.key==='Enter') submitPin(); });
+
+  // ── SLOTS TAB ─────────────────────────────────────────
+  async function renderSlotsTab() {
+    const body = document.getElementById('dash-body');
+
+    const locationOptions = allBusinesses
+      .filter(b => b.type === 'collection')
+      .map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+
+    // Also fetch proper locations from API
+    let locationOpts = locationOptions;
+    try {
+      const lr = await fetch(BASE + '/api/admin/locations', { headers: { 'X-Admin-PIN': currentPin } });
+      if (lr.ok) {
+        const locs = await lr.json();
+        locationOpts = locs.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+      }
+    } catch(e) {}
+
+    body.innerHTML = `
+      <div class="section-label">Create Time Slot</div>
+      <div class="form-card">
+        <div class="form-row">
+          <select class="form-input" id="slot-loc">${locationOpts}</select>
+          <input class="form-input" id="slot-date" type="date" />
+        </div>
+        <div class="form-row">
+          <input class="form-input" id="slot-time" placeholder="e.g. 10:00 – 12:00" />
+          <input class="form-input" id="slot-capacity" type="number" min="1" placeholder="Capacity" />
+        </div>
+        <button class="action-btn primary" onclick="createSlot()">Add Slot</button>
+        <div id="slot-msg" style="font-family:'DM Mono',monospace;font-size:12px;min-height:16px;"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:8px;">Browse Slots</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+        <select class="form-input" id="slot-view-loc" style="flex:1;">${locationOpts}</select>
+        <input class="form-input" id="slot-view-date" type="date" style="flex:1;" />
+        <button class="action-btn" onclick="loadSlots()">Load</button>
+      </div>
+      <div id="slot-list"></div>
+    `;
+  }
+
+  async function createSlot() {
+    const msgEl = document.getElementById('slot-msg');
+    const location_id = parseInt(document.getElementById('slot-loc').value);
+    const date = document.getElementById('slot-date').value;
+    const time = document.getElementById('slot-time').value.trim();
+    const capacity = parseInt(document.getElementById('slot-capacity').value);
+    if (!location_id || !date || !time || !capacity) {
+      msgEl.style.color = '#E05A5A';
+      msgEl.textContent = 'All fields are required.';
+      return;
+    }
+    const res = await fetch(BASE + '/api/admin/time-slots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ location_id, date, time, capacity }),
+    });
+    if (res.ok) {
+      msgEl.style.color = 'rgba(80,200,120,0.9)';
+      msgEl.textContent = 'Slot created.';
+      document.getElementById('slot-time').value = '';
+      document.getElementById('slot-capacity').value = '';
+      setTimeout(() => { msgEl.textContent = ''; }, 2000);
+    } else {
+      const e = await res.json().catch(() => ({}));
+      msgEl.style.color = '#E05A5A';
+      msgEl.textContent = e.error || 'Failed.';
+    }
+  }
+
+  async function loadSlots() {
+    const el = document.getElementById('slot-list');
+    el.innerHTML = '<div class="empty">Loading…</div>';
+    const location_id = parseInt(document.getElementById('slot-view-loc').value);
+    const date = document.getElementById('slot-view-date').value;
+    let url = BASE + '/api/admin/time-slots?';
+    if (location_id) url += `location_id=${location_id}&`;
+    if (date) url += `date=${date}`;
+
+    const res = await fetch(url, { headers: { 'X-Admin-PIN': currentPin } });
+    const slots = res.ok ? await res.json() : [];
+    if (!slots.length) { el.innerHTML = '<div class="empty">No slots found.</div>'; return; }
+
+    el.innerHTML = slots.map(s => `
+      <div class="form-card" style="margin-bottom:8px;">
+        <div class="portrait-row">
+          <div style="flex:1;gap:4px;">
+            <div style="font-family:'Playfair Display',serif;font-size:15px;">${s.location_name} · ${s.time}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">${s.date} · ${s.booked}/${s.capacity} booked</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="action-btn" onclick="editSlot(${s.id},${s.capacity},${s.booked})">Edit</button>
+            <button class="action-btn danger" onclick="deleteSlot(${s.id})">Delete</button>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  async function editSlot(id, capacity, booked) {
+    const newCap = prompt(`Edit capacity (current: ${capacity})`);
+    if (!newCap) return;
+    const res = await fetch(BASE + '/api/admin/time-slots/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ capacity: parseInt(newCap) }),
+    });
+    if (res.ok) loadSlots();
+    else alert('Failed to update slot.');
+  }
+
+  async function deleteSlot(id) {
+    if (!confirm('Delete this time slot?')) return;
+    const res = await fetch(BASE + '/api/admin/time-slots/' + id, {
+      method: 'DELETE',
+      headers: { 'X-Admin-PIN': currentPin },
+    });
+    if (res.ok) loadSlots();
+    else alert('Failed to delete slot.');
+  }
+
+  // ── VARIETIES TAB ─────────────────────────────────────
+  async function renderVarietiesTab() {
+    const body = document.getElementById('dash-body');
+    body.innerHTML = '<div class="empty">Loading…</div>';
+
+    const [vRes, lRes] = await Promise.all([
+      fetch(BASE + '/api/admin/varieties', { headers: { 'X-Admin-PIN': currentPin } }),
+      fetch(BASE + '/api/admin/locations', { headers: { 'X-Admin-PIN': currentPin } }),
+    ]);
+
+    const varieties = vRes.ok ? await vRes.json() : [];
+    const locations = lRes.ok ? await lRes.json() : [];
+
+    const locationOpts = `<option value="">All locations</option>` +
+      locations.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+
+    body.innerHTML = `
+      <div class="section-label">Varieties</div>
+      ${varieties.length === 0 ? '<div class="empty">No varieties.</div>' :
+        varieties.map(v => `
+          <div class="form-card" style="margin-bottom:8px;" id="variety-card-${v.id}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <div>
+                <div style="font-family:'Playfair Display',serif;font-size:16px;">${v.name}</div>
+                <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">CA$${(v.price_cents/100).toFixed(2)} · stock: ${v.stock_remaining}</div>
+              </div>
+              <span style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;color:${v.active?'rgba(80,200,120,0.9)':'#E05A5A'}">${v.active?'ACTIVE':'INACTIVE'}</span>
+            </div>
+            <div class="form-row">
+              <select class="form-input" id="v-loc-${v.id}">${locationOpts}</select>
+              <select class="form-input" id="v-active-${v.id}">
+                <option value="true" ${v.active?'selected':''}>Active</option>
+                <option value="false" ${!v.active?'selected':''}>Inactive</option>
+              </select>
+            </div>
+            <button class="action-btn primary" onclick="updateVariety(${v.id})" style="align-self:flex-start;">Save</button>
+          </div>
+        `).join('')
+      }
+    `;
+
+    // Set current location values after render
+    varieties.forEach(v => {
+      const sel = document.getElementById('v-loc-' + v.id);
+      if (sel && v.location_id) sel.value = String(v.location_id);
+    });
+  }
+
+  async function updateVariety(id) {
+    const locEl = document.getElementById('v-loc-' + id);
+    const activeEl = document.getElementById('v-active-' + id);
+    const location_id = locEl.value ? parseInt(locEl.value) : null;
+    const active = activeEl.value === 'true';
+
+    const res = await fetch(BASE + '/api/admin/varieties/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ location_id, active }),
+    });
+    if (res.ok) {
+      const card = document.getElementById('variety-card-' + id);
+      if (card) {
+        const badge = card.querySelector('span');
+        if (badge) {
+          badge.style.color = active ? 'rgba(80,200,120,0.9)' : '#E05A5A';
+          badge.textContent = active ? 'ACTIVE' : 'INACTIVE';
+        }
+      }
+    } else {
+      alert('Failed to update variety.');
+    }
+  }
 </script>
 </body>
 </html>

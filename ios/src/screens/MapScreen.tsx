@@ -8,7 +8,7 @@ import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../context/PanelContext';
 import PanelNavigator from '../components/PanelNavigator';
 import { fetchBusinesses, updatePushToken } from '../lib/api';
-import { useColors } from '../theme';
+import { useColors, fonts, SPACING } from '../theme';
 import { useApp } from '../../App';
 
 const SHEET_NAME = 'main-sheet';
@@ -114,6 +114,7 @@ export default function MapScreen() {
   const [contentHeight, setContentHeight] = useState(SCREEN_HEIGHT * 0.55);
   const [bizError, setBizError] = useState(false);
   const [bizLoading, setBizLoading] = useState(true);
+  const [mapFilter, setMapFilter] = useState<'all' | 'collection' | 'partner' | 'popup'>('all');
   const [isVerified, setIsVerified] = useState(false);
   const mapRef = useRef<MapView>(null);
   const userCoords = useRef<{ latitude: number; longitude: number } | null>(null);
@@ -330,6 +331,8 @@ export default function MapScreen() {
   const auditionPopups = allPopups.filter(b => b.is_audition);
   const partners = validBusinesses.filter(b => b.type !== 'collection' && b.type !== 'popup');
 
+  const isVisible = (b: any) => mapFilter === 'all' || b.type === mapFilter;
+
   const fabBottom = sheetHeight + 16;
   const fabsVisible = sheetHeight < SCREEN_HEIGHT - insets.top - 40;
 
@@ -355,7 +358,7 @@ export default function MapScreen() {
           if (coord) userCoords.current = { latitude: coord.latitude, longitude: coord.longitude };
         }}
       >
-        {collectionPoints.map(b => (
+        {collectionPoints.map(b => isVisible(b) && (
           <Marker
             key={`col-${b.id}`}
             coordinate={{ latitude: b.lat, longitude: b.lng }}
@@ -368,6 +371,7 @@ export default function MapScreen() {
         ))}
 
         {popups.map(b => {
+          if (!isVisible(b)) return null;
           const live = isLive(b);
           if (isVerified) {
             return (
@@ -405,6 +409,7 @@ export default function MapScreen() {
         })}
 
         {auditionPopups.map(b => {
+          if (!isVisible(b)) return null;
           const live = isLive(b);
           if (isVerified) {
             return (
@@ -432,7 +437,7 @@ export default function MapScreen() {
           );
         })}
 
-        {partners.map(b => (
+        {partners.map(b => isVisible(b) && (
           <Marker
             key={`biz-${b.id}`}
             coordinate={{ latitude: b.lat, longitude: b.lng }}
@@ -448,6 +453,21 @@ export default function MapScreen() {
           </Marker>
         ))}
       </MapView>
+
+      <View style={[styles.filterBar, { top: insets.top + 60 }]}>
+        {(['all', 'collection', 'partner', 'popup'] as const).map(f => (
+          <TouchableOpacity
+            key={f}
+            style={[styles.filterPill, { backgroundColor: mapFilter === f ? c.accent : c.card, borderColor: c.border }]}
+            onPress={() => setMapFilter(f)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.filterPillText, { color: mapFilter === f ? '#0C0C0E' : c.muted }]}>
+              {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
 
       <TrueSheet
         name={SHEET_NAME}
@@ -600,4 +620,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   bizErrorText: { fontSize: 13, fontFamily: 'DMSans_400Regular' },
+  filterBar: { position: 'absolute', left: SPACING.md ?? 16, flexDirection: 'row', gap: 8, zIndex: 10 },
+  filterPill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
+  filterPillText: { fontFamily: fonts.dmMono, fontSize: 10, letterSpacing: 1 },
 });

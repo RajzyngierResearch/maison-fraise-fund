@@ -73,6 +73,7 @@ export const varieties = pgTable('varieties', {
   stock_remaining: integer('stock_remaining').notNull().default(0),
   harvest_date: date('harvest_date'),
   tag: text('tag'),
+  location_id: integer('location_id').references(() => locations.id),
   active: boolean('active').notNull().default(true),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });

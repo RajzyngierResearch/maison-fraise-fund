@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { View, ActivityIndicator, Platform, StatusBar } from 'react-native';
+import { View, ActivityIndicator, Platform, StatusBar, AppState } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StripeProvider } from '@stripe/stripe-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,6 +14,7 @@ import { DMMono_400Regular } from '@expo-google-fonts/dm-mono';
 import RootNavigator from './src/navigation/RootNavigator';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import { enableReviewMode as activateReviewMode } from './src/lib/reviewMode';
+import { updatePushToken } from './src/lib/api';
 import './src/lib/geofence'; // registers background geofence task at startup
 
 Notifications.setNotificationHandler({
@@ -94,6 +95,16 @@ export default function App() {
     });
     return () => sub.remove();
   }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', async (state) => {
+      if (state === 'active' && pushToken) {
+        const id = await AsyncStorage.getItem('user_db_id').catch(() => null);
+        if (id) updatePushToken(parseInt(id), pushToken).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, [pushToken]);
 
   const handleEnableReviewMode = () => {
     activateReviewMode();

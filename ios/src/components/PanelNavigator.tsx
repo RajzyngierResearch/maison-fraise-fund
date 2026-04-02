@@ -27,6 +27,9 @@ import UserProfilePanel from './panels/UserProfilePanel';
 import OrderHistoryPanel from './panels/OrderHistoryPanel';
 import NotificationInboxPanel from './panels/NotificationInboxPanel';
 import ActivityFeedPanel from './panels/ActivityFeedPanel';
+import SearchPanel from './panels/SearchPanel';
+import FollowingListPanel from './panels/FollowingListPanel';
+import NominationHistoryPanel from './panels/NominationHistoryPanel';
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
@@ -54,6 +57,9 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   'order-history': OrderHistoryPanel,
   'notification-inbox': NotificationInboxPanel,
   'activity-feed': ActivityFeedPanel,
+  'search': SearchPanel,
+  'following-list': FollowingListPanel,
+  'nomination-history': NominationHistoryPanel,
 };
 
 // Panels that should always expand the sheet to full height
@@ -61,6 +67,7 @@ const FULL_HEIGHT_PANELS = new Set([
   'location', 'chocolate', 'finish', 'quantity', 'gift-note', 'when', 'review', 'confirmation', 'nfc', 'verified', 'standingOrder',
   'popup-request', 'popup-detail', 'dj-offer', 'nomination', 'partner-detail', 'campaign-commission', 'contract-offer',
   'lookbook', 'user-profile', 'order-history', 'notification-inbox', 'activity-feed',
+  'search', 'following-list', 'nomination-history',
 ]);
 
 // Panels that expand to medium height
