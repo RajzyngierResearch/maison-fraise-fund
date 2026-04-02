@@ -50,6 +50,8 @@ import PatronagesPanel from './panels/PatronagesPanel';
 import PatronageDetailPanel from './panels/PatronageDetailPanel';
 import GreenhousesPanel from './panels/GreenhousesPanel';
 import GreenhouseDetailPanel from './panels/GreenhouseDetailPanel';
+import ChocolateLocationsPanel from './panels/ChocolateLocationsPanel';
+import ChocolateLocationDetailPanel from './panels/ChocolateLocationDetailPanel';
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
@@ -100,6 +102,8 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   'patronage-detail': PatronageDetailPanel,
   'greenhouses': GreenhousesPanel,
   'greenhouse-detail': GreenhouseDetailPanel,
+  'chocolate-locations': ChocolateLocationsPanel,
+  'chocolate-location-detail': ChocolateLocationDetailPanel,
 };
 
 // Panels that should always expand the sheet to full height
@@ -114,6 +118,7 @@ const FULL_HEIGHT_PANELS = new Set([
   'my-tokens', 'token-detail', 'token-offers',
   'patronages', 'patronage-detail',
   'greenhouses', 'greenhouse-detail',
+  'chocolate-locations', 'chocolate-location-detail',
 ]);
 
 // Panels that expand to medium height

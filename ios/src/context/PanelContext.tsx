@@ -49,7 +49,9 @@ export type PanelId =
   | 'patronages'
   | 'patronage-detail'
   | 'greenhouses'
-  | 'greenhouse-detail';
+  | 'greenhouse-detail'
+  | 'chocolate-locations'
+  | 'chocolate-location-detail';
 
 export interface OrderState {
   variety_id: number | null;

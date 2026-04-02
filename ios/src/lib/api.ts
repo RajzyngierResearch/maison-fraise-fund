@@ -1171,3 +1171,26 @@ export async function claimPatronage(
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'claim_failed'); }
   return r.json();
 }
+
+// ─── Chocolate Location API ───────────────────────────────────────────────────
+
+export async function fetchChocolateLocations(): Promise<any[]> {
+  const r = await fetch(`${BASE_URL}/api/business-locations`);
+  if (!r.ok) return [];
+  const all: any[] = await r.json();
+  return all.filter((loc: any) =>
+    loc.location_type === 'house_chocolate' || loc.location_type === 'collab_chocolate',
+  );
+}
+
+export async function fundChocolateLocation(
+  businessId: number,
+): Promise<{ client_secret: string; amount_cents: number }> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/business-locations/${businessId}/fund`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'fund_failed'); }
+  return r.json();
+}

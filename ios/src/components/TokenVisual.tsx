@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Path, Circle, G, Ellipse } from 'react-native-svg';
+import Svg, { Path, G, Ellipse, Defs, ClipPath, Rect } from 'react-native-svg';
 import { fonts } from '../theme';
+import { composeTokenName } from '../lib/tokenAlgorithm';
 
 export interface TokenVisualProps {
   tokenId: number;
@@ -10,6 +11,34 @@ export interface TokenVisualProps {
   seeds: number;        // visual_seeds
   irregularity: number; // visual_irregularity
   width?: number;       // render width in pixels, default 120
+  tokenType?: 'standard' | 'chocolate'; // new
+  partnerName?: string | null; // new
+}
+
+function interpolateChocolateColor(size: number): string {
+  // size 1–100 → #8B4513 (milk) to #1a0a00 (near black)
+  const t = Math.max(0, Math.min(1, (size - 1) / 99));
+  const r = Math.round(0x8B + t * (0x1a - 0x8B));
+  const g = Math.round(0x45 + t * (0x0a - 0x45));
+  const b = Math.round(0x13 + t * (0x00 - 0x13));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+function buildChocolateDipPath(
+  cx: number,
+  dipTopY: number,
+  dipBottomY: number,
+  halfWidth: number,
+): string {
+  // Rounded top edge — a soft wavy bezier that looks like the dip line
+  const waveAmp = halfWidth * 0.08;
+  return [
+    `M ${cx - halfWidth} ${dipBottomY}`,
+    `L ${cx - halfWidth} ${dipTopY + waveAmp}`,
+    `C ${cx - halfWidth * 0.5} ${dipTopY - waveAmp}, ${cx + halfWidth * 0.5} ${dipTopY + waveAmp * 1.5}, ${cx + halfWidth} ${dipTopY + waveAmp * 0.3}`,
+    `L ${cx + halfWidth} ${dipBottomY}`,
+    'Z',
+  ].join(' ');
 }
 
 // Simple seeded random: returns 0..1
@@ -133,6 +162,7 @@ export function TokenVisual({
   seeds,
   irregularity,
   width = 120,
+  tokenType,
 }: TokenVisualProps) {
   // Scale everything based on `size` (1–100) and render `width`
   const scale = 0.4 + (size / 100) * 0.6; // 0.4 to 1.0
@@ -147,7 +177,20 @@ export function TokenVisual({
 
   const bodyPath = buildStrawberryPath(cx, cy, bodyW, bodyH, irregularity, tokenId);
   const leafPath = buildLeafPath(cx, leafTopY, leafSize);
-  const seedDots = generateSeeds(cx, cy, bodyW, bodyH, Math.min(seeds, 80), tokenId);
+
+  // For chocolate mode, seeds only appear above the dip line
+  const isChocolate = tokenType === 'chocolate';
+  const dipFraction = 0.35; // bottom 35% is dipped
+  const bodyTopY = cy - bodyH * 0.1;
+  const bodyBottomY = cy + bodyH * 0.85;
+  const dipTopY = bodyTopY + (bodyBottomY - bodyTopY) * (1 - dipFraction);
+  const chocolateDipPath = buildChocolateDipPath(cx, dipTopY, bodyBottomY + 4, bodyW * 0.52);
+
+  // Seeds: if chocolate, restrict to above dip line
+  const allSeeds = generateSeeds(cx, cy, bodyW, bodyH, Math.min(seeds, 80), tokenId);
+  const seedDots = isChocolate
+    ? allSeeds.filter(dot => dot.y < dipTopY - dot.ry)
+    : allSeeds;
 
   // Subtle highlight ellipse at top-left of body
   const hlCx = cx - bodyW * 0.18;
@@ -155,10 +198,28 @@ export function TokenVisual({
   const hlRx = bodyW * 0.12;
   const hlRy = bodyH * 0.1;
 
+  const chocolateColor = isChocolate ? interpolateChocolateColor(size) : '#8B4513';
+  const clipId = `berry-clip-${tokenId}`;
+
   return (
     <Svg width={viewSize} height={viewSize} viewBox={`0 0 ${viewSize} ${viewSize}`}>
+      {isChocolate && (
+        <Defs>
+          <ClipPath id={clipId}>
+            <Path d={bodyPath} />
+          </ClipPath>
+        </Defs>
+      )}
       {/* Body */}
       <Path d={bodyPath} fill={color} />
+      {/* Chocolate dip overlay (clipped to berry shape) */}
+      {isChocolate && (
+        <Path
+          d={chocolateDipPath}
+          fill={chocolateColor}
+          clipPath={`url(#${clipId})`}
+        />
+      )}
       {/* Leaf */}
       <Path d={leafPath} fill="#4CAF50" opacity={0.65} />
       {/* Seeds */}
@@ -202,6 +263,10 @@ export interface TokenCardData {
   color: string;
   seeds: number;
   irregularity: number;
+  // new
+  tokenType?: 'standard' | 'chocolate';
+  partnerName?: string | null;
+  locationType?: string | null;
 }
 
 interface TokenCardProps {
@@ -221,6 +286,13 @@ export function TokenCard({ data, small, onPress }: TokenCardProps) {
     maximumFractionDigits: 2,
   })}`;
 
+  const displayName = composeTokenName({
+    token_type: data.tokenType,
+    location_type: data.locationType,
+    partner_name: data.partnerName,
+    variety_name: data.varietyName,
+  });
+
   const content = (
     <View style={[
       styles.card,
@@ -235,10 +307,12 @@ export function TokenCard({ data, small, onPress }: TokenCardProps) {
           seeds={data.seeds}
           irregularity={data.irregularity}
           width={visualWidth}
+          tokenType={data.tokenType}
+          partnerName={data.partnerName}
         />
       </View>
       <Text style={[styles.tokenNumber, small && styles.textSmall]} numberOfLines={1}>
-        #{data.tokenNumber} · {data.varietyName.toUpperCase()}
+        #{data.tokenNumber} · {displayName}
       </Text>
       <Text style={[styles.amount, small && styles.textSmall]} numberOfLines={1}>
         {formattedAmount}

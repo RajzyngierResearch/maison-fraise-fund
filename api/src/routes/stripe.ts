@@ -4,7 +4,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { stripe } from '../lib/stripe';
 import { db } from '../db';
-import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions, portalAccess, tokens, seasonPatronages, patronTokens, greenhouses, greenhouseFunding, provenanceTokens } from '../db/schema';
+import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions, portalAccess, tokens, seasonPatronages, patronTokens, greenhouses, greenhouseFunding, provenanceTokens, locationFunding } from '../db/schema';
 import { sendPushNotification } from '../lib/push';
 import { sendRsvpConfirmed, sendOrderConfirmation, sendTipReceived } from '../lib/resend';
 import { logger } from '../lib/logger';
@@ -114,15 +114,26 @@ router.post('/webhook', async (req: Request, res: Response) => {
               .where(eq(users.email, customer_email));
 
             if (orderUser) {
-              // Fetch variety and location names for denormalization
+              // Fetch variety (including variety_type) and location names for denormalization
               const [variety] = await db
-                .select({ name: varieties.name })
+                .select({ name: varieties.name, variety_type: varieties.variety_type })
                 .from(varieties)
                 .where(eq(varieties.id, variety_id));
               const [location] = await db
                 .select({ name: timeSlots.time })
                 .from(timeSlots)
                 .where(eq(timeSlots.id, time_slot_id));
+
+              // Fetch business info for chocolate token enrichment
+              const [orderBusiness] = await db
+                .select({
+                  partner_name: businesses.partner_name,
+                  location_type: businesses.location_type,
+                })
+                .from(businesses)
+                .where(eq(businesses.id, location_id));
+
+              const isChocolate = variety?.variety_type === 'chocolate';
 
               const visuals = computeTokenVisuals(excessCents);
               const tokenNumber = await getNextTokenNumber(variety_id, db, tokens, eq);
@@ -143,6 +154,9 @@ router.post('/webhook', async (req: Request, res: Response) => {
                   nfc_token: nfc_token,
                   variety_name: variety?.name ?? '',
                   location_name: location?.name ?? '',
+                  token_type: isChocolate ? 'chocolate' : 'standard',
+                  partner_name: isChocolate ? (orderBusiness?.partner_name ?? null) : null,
+                  location_type: isChocolate ? (orderBusiness?.location_type ?? null) : null,
                 })
                 .returning();
 
@@ -477,6 +491,64 @@ router.post('/webhook', async (req: Request, res: Response) => {
         }
 
         logger.info(`Greenhouse ${greenhouseId} funded by user ${userId} for ${years} year(s)`);
+      } else if (type === 'location_fund') {
+        const businessId = parseInt(pi.metadata.business_id);
+        const userId = parseInt(pi.metadata.user_id);
+        const businessName = pi.metadata.business_name;
+
+        const termEndsAt = new Date();
+        termEndsAt.setFullYear(termEndsAt.getFullYear() + 10);
+
+        await db.update(businesses).set({
+          founding_patron_id: userId,
+          founding_term_ends_at: termEndsAt,
+          inaugurated_at: new Date(),
+        }).where(eq(businesses.id, businessId));
+
+        await db.update(locationFunding).set({ status: 'confirmed' })
+          .where(eq(locationFunding.stripe_payment_intent_id, pi.id));
+
+        // Get user display_name for provenance record
+        const [user] = await db.select({ display_name: users.display_name, push_token: users.push_token }).from(users).where(eq(users.id, userId));
+
+        // Create provenance token for the location
+        const currentYear = new Date().getFullYear();
+        const ledger = JSON.stringify([{
+          user_id: userId,
+          display_name: user?.display_name ?? 'Unknown',
+          from_year: currentYear,
+          to_year: currentYear + 10,
+          role: 'founder',
+        }]);
+
+        // Check if provenance token already exists for this location
+        const existing = await db
+          .select({ id: provenanceTokens.id })
+          .from(provenanceTokens)
+          .where(eq(provenanceTokens.location_id, businessId));
+
+        if (existing.length === 0) {
+          // Insert a provenance token using a dummy greenhouse_id workaround:
+          // greenhouse_id is nullable now, so we can insert with null
+          await db.insert(provenanceTokens).values({
+            greenhouse_id: null as unknown as number,
+            location_id: businessId,
+            provenance_ledger: ledger,
+            greenhouse_name: businessName,
+            greenhouse_location: pi.metadata.partner_name ?? '',
+          });
+        }
+
+        // Push notification
+        if (user?.push_token) {
+          sendPushNotification(user.push_token, {
+            title: 'Your chocolate shop is inaugurated.',
+            body: `${businessName} · 10-year founding term begins now.`,
+            data: { screen: 'business-locations' },
+          }).catch(() => {});
+        }
+
+        logger.info(`Location ${businessId} funded by user ${userId} (10-year founding term)`);
       }
     }
 

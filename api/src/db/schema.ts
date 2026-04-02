@@ -76,6 +76,7 @@ export const varieties = pgTable('varieties', {
   location_id: integer('location_id').references(() => locations.id),
   image_url: text('image_url'),
   active: boolean('active').notNull().default(true),
+  variety_type: text('variety_type').notNull().default('strawberry'), // 'strawberry' | 'chocolate'
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -184,6 +185,14 @@ export const businesses = pgTable('businesses', {
   partner_business_id: integer('partner_business_id'), // collaborating partner venue
   host_user_id: integer('host_user_id'),               // user who hosts the popup
   checkin_token: text('checkin_token'),                 // NFC check-in token for this popup
+  // Chocolate / location type fields
+  location_type: text('location_type').notNull().default('collection'), // 'collection' | 'popup' | 'house_chocolate' | 'collab_chocolate'
+  partner_name: text('partner_name'), // for collab locations: "Chocolaterie du Parc"
+  operating_cost_cents: integer('operating_cost_cents'), // for house_chocolate: 10-year operating cost
+  founding_patron_id: integer('founding_patron_id').references(() => users.id),
+  founding_term_ends_at: timestamp('founding_term_ends_at'),
+  inaugurated_at: timestamp('inaugurated_at'),
+  approved_by_admin: boolean('approved_by_admin').notNull().default(false),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -507,6 +516,9 @@ export const tokens = pgTable('tokens', {
   minted_at: timestamp('minted_at').notNull().defaultNow(),
   variety_name: text('variety_name').notNull(),
   location_name: text('location_name').notNull(),
+  token_type: text('token_type').notNull().default('standard'), // 'standard' | 'chocolate'
+  partner_name: text('partner_name'), // for chocolate collab tokens
+  location_type: text('location_type'), // 'house_chocolate' | 'collab_chocolate'
 });
 
 export const tokenTrades = pgTable('token_trades', {
@@ -578,7 +590,9 @@ export const greenhouses = pgTable('greenhouses', {
 
 export const provenanceTokens = pgTable('provenance_tokens', {
   id: serial('id').primaryKey(),
-  greenhouse_id: integer('greenhouse_id').notNull().references(() => greenhouses.id).unique(),
+  greenhouse_id: integer('greenhouse_id').references(() => greenhouses.id).unique(),
+  // For location (business) provenance tokens
+  location_id: integer('location_id').references(() => businesses.id),
   // Provenance ledger stored as JSON array of { user_id, display_name, from_year, to_year, role: 'founder' | 'patron' }
   provenance_ledger: text('provenance_ledger').notNull().default('[]'),
   nfc_token: text('nfc_token').unique(),
@@ -593,6 +607,18 @@ export const greenhouseFunding = pgTable('greenhouse_funding', {
   user_id: integer('user_id').notNull().references(() => users.id),
   amount_cents: integer('amount_cents').notNull(),
   years: integer('years').notNull(), // 3, 5, or 10
+  stripe_payment_intent_id: text('stripe_payment_intent_id'),
+  status: text('status').notNull().default('pending'), // pending | confirmed
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+// ─── Location funding (chocolate shop / house_chocolate) ──────────────────────
+
+export const locationFunding = pgTable('location_funding', {
+  id: serial('id').primaryKey(),
+  business_id: integer('business_id').notNull().references(() => businesses.id),
+  user_id: integer('user_id').notNull().references(() => users.id),
+  amount_cents: integer('amount_cents').notNull(),
   stripe_payment_intent_id: text('stripe_payment_intent_id'),
   status: text('status').notNull().default('pending'), // pending | confirmed
   created_at: timestamp('created_at').notNull().defaultNow(),

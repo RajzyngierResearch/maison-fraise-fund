@@ -679,13 +679,27 @@ export default function ProfilePanel() {
                 <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
 
                 <TouchableOpacity
-                  style={[styles.actionRow, styles.actionRowLast]}
+                  style={styles.actionRow}
                   onPress={() => showPanel('greenhouses')}
                   activeOpacity={0.75}
                 >
                   <View style={styles.actionInfo}>
                     <Text style={[styles.actionTitle, { color: c.accent, fontFamily: fonts.dmMono }]}>{'> greenhouses_'}</Text>
                     <Text style={[styles.actionSub, { color: c.muted }]}>Greenhouse founding & provenance</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                <TouchableOpacity
+                  style={[styles.actionRow, styles.actionRowLast]}
+                  onPress={() => showPanel('chocolate-locations')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.accent, fontFamily: fonts.dmMono }]}>{'> chocolate shops_'}</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Chocolate locations & collaborations</Text>
                   </View>
                   <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
                 </TouchableOpacity>

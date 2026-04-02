@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { eq, isNull, sql, and, lte, sum, gte, desc, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
-import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist, portalAccess, portalContent, tokens, tokenTrades, tokenTradeOffers, seasonPatronages, patronTokens, greenhouses, provenanceTokens } from '../db/schema';
+import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist, portalAccess, portalContent, tokens, tokenTrades, tokenTradeOffers, seasonPatronages, patronTokens, greenhouses, provenanceTokens, locationFunding } from '../db/schema';
 import { logger } from '../lib/logger';
 import { sendOrderReady, sendContractOffer, sendAuditionResult } from '../lib/resend';
 import { sendPushNotification } from '../lib/push';
@@ -433,19 +433,23 @@ router.post('/businesses', async (req: Request, res: Response) => {
   const { name, type, address, city, hours, contact, latitude, longitude, launched_at,
           description, instagram_handle, neighbourhood, starts_at, ends_at, dj_name,
           organizer_note, capacity, entrance_fee_cents, is_audition, partner_business_id,
-          host_user_id, checkin_token } = req.body;
-  if (!name || !type || !address || !city || !launched_at) {
-    res.status(400).json({ error: 'Missing required fields' });
+          host_user_id, checkin_token,
+          location_type, partner_name, operating_cost_cents } = req.body;
+  if (!name || !address || !city) {
+    res.status(400).json({ error: 'Missing required fields: name, address, city' });
     return;
   }
   try {
     const [business] = await db.insert(businesses).values({
-      name, type, address, city,
+      name,
+      type: type ?? 'collection',
+      address,
+      city,
       hours: hours ?? null,
       contact: contact ?? null,
       latitude: latitude ?? null,
       longitude: longitude ?? null,
-      launched_at: new Date(launched_at),
+      launched_at: launched_at ? new Date(launched_at) : new Date(),
       description: description ?? null,
       instagram_handle: instagram_handle ?? null,
       neighbourhood: neighbourhood ?? null,
@@ -459,8 +463,59 @@ router.post('/businesses', async (req: Request, res: Response) => {
       partner_business_id: partner_business_id ?? null,
       host_user_id: host_user_id ?? null,
       checkin_token: checkin_token ?? randomUUID(),
+      location_type: location_type ?? 'collection',
+      partner_name: partner_name ?? null,
+      operating_cost_cents: operating_cost_cents ?? null,
     }).returning();
-    res.status(201).json(business);
+    res.status(201).json({ id: business.id });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/businesses/:id/chocolate — update chocolate shop specific fields
+router.patch('/businesses/:id/chocolate', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+  const { location_type, partner_name, operating_cost_cents } = req.body;
+  const body: Record<string, any> = {};
+  if (location_type !== undefined) body.location_type = location_type;
+  if (partner_name !== undefined) body.partner_name = partner_name;
+  if (operating_cost_cents !== undefined) body.operating_cost_cents = operating_cost_cents;
+  if (Object.keys(body).length === 0) { res.status(400).json({ error: 'No valid fields to update' }); return; }
+  try {
+    const [updated] = await db.update(businesses).set(body).where(eq(businesses.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/location-funding — all location funding rows with user display_name and business name
+router.get('/location-funding', async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: locationFunding.id,
+        business_id: locationFunding.business_id,
+        business_name: businesses.name,
+        user_id: locationFunding.user_id,
+        user_display_name: users.display_name,
+        user_email: users.email,
+        amount_cents: locationFunding.amount_cents,
+        stripe_payment_intent_id: locationFunding.stripe_payment_intent_id,
+        status: locationFunding.status,
+        created_at: locationFunding.created_at,
+      })
+      .from(locationFunding)
+      .innerJoin(businesses, eq(locationFunding.business_id, businesses.id))
+      .innerJoin(users, eq(locationFunding.user_id, users.id))
+      .orderBy(locationFunding.created_at);
+    res.json(rows.map(r => ({
+      ...r,
+      user_display_name: r.user_display_name ?? r.user_email?.split('@')[0] ?? 'Unknown',
+    })));
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -2203,6 +2258,39 @@ router.post('/migrate/greenhouses', async (_req: Request, res: Response) => {
       )
     `);
     res.json({ ok: true, message: 'Greenhouse migration complete' });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Migration for location / chocolate shop additions
+router.post('/migrate/locations', async (_req: Request, res: Response) => {
+  try {
+    await db.execute(sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS location_type text NOT NULL DEFAULT 'collection'`);
+    await db.execute(sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS partner_name text`);
+    await db.execute(sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS operating_cost_cents integer`);
+    await db.execute(sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS founding_patron_id integer REFERENCES users(id)`);
+    await db.execute(sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS founding_term_ends_at timestamp`);
+    await db.execute(sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS inaugurated_at timestamp`);
+    await db.execute(sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS approved_by_admin boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE varieties ADD COLUMN IF NOT EXISTS variety_type text NOT NULL DEFAULT 'strawberry'`);
+    await db.execute(sql`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS token_type text NOT NULL DEFAULT 'standard'`);
+    await db.execute(sql`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS partner_name text`);
+    await db.execute(sql`ALTER TABLE tokens ADD COLUMN IF NOT EXISTS location_type text`);
+    await db.execute(sql`ALTER TABLE provenance_tokens ALTER COLUMN greenhouse_id DROP NOT NULL`);
+    await db.execute(sql`ALTER TABLE provenance_tokens ADD COLUMN IF NOT EXISTS location_id integer REFERENCES businesses(id)`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS location_funding (
+        id serial PRIMARY KEY,
+        business_id integer NOT NULL REFERENCES businesses(id),
+        user_id integer NOT NULL REFERENCES users(id),
+        amount_cents integer NOT NULL,
+        stripe_payment_intent_id text,
+        status text NOT NULL DEFAULT 'pending',
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    res.json({ ok: true, message: 'Location migration complete' });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

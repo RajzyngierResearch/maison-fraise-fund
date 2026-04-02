@@ -75,3 +75,18 @@ export async function getNextTokenNumber(
   const existing = await db.select().from(tokensTable).where(eq(tokensTable.variety_id, varietyId));
   return existing.length + 1;
 }
+
+export function composeTokenName(params: {
+  token_type: string;
+  location_type?: string | null;
+  partner_name?: string | null;
+  variety_name: string;
+}): string {
+  if (params.token_type === 'chocolate') {
+    if (params.location_type === 'collab_chocolate' && params.partner_name) {
+      return `MAISON FRAISE × ${params.partner_name.toUpperCase()}`;
+    }
+    return 'MAISON FRAISE';
+  }
+  return params.variety_name.toUpperCase();
+}

@@ -359,6 +359,7 @@
       { id:'portal',      label:'Portal' },
       { id:'patronages',   label:'Patronages' },
       { id:'greenhouses',  label:'Greenhouses' },
+      { id:'chocolate',    label:'Chocolate' },
     ];
     document.getElementById('tab-row').innerHTML = tabs.map(t =>
       `<div class="tab ${t.id === currentTab ? 'active' : ''}" onclick="switchTab('${t.id}')">${t.label}</div>`
@@ -382,6 +383,7 @@
     else if (tab === 'portal')      loadPortalActivity();
     else if (tab === 'patronages')   loadPatronages();
     else if (tab === 'greenhouses')  loadGreenhousesTab();
+    else if (tab === 'chocolate')    loadChocolateShops();
   }
 
   // ── ORDERS TAB ────────────────────────────────────────
@@ -2876,6 +2878,339 @@
       resultEl.style.color = '#E05A5A';
       resultEl.textContent = err.error || 'Failed to save NFC token.';
     }
+  }
+
+  // ── CHOCOLATE SHOPS TAB ──────────────────────────────
+  let allChocolateShops = [];
+
+  async function loadChocolateShops() {
+    const body = document.getElementById('dash-body');
+    body.innerHTML = '<div class="empty">Loading…</div>';
+    const res = await fetch(BASE + '/api/admin/businesses', { headers: { 'X-Admin-PIN': currentPin } });
+    if (!res.ok) { body.innerHTML = '<div class="empty">Failed to load chocolate shops.</div>'; return; }
+    const all = await res.json();
+    allChocolateShops = all.filter(b => b.location_type === 'house_chocolate' || b.location_type === 'collab_chocolate');
+    renderChocolateShopsTab();
+  }
+
+  function renderChocolateShopsTab() {
+    const body = document.getElementById('dash-body');
+
+    const total        = allChocolateShops.length;
+    const inaugurated  = allChocolateShops.filter(b => b.inaugurated_at != null).length;
+    const collabs      = allChocolateShops.filter(b => b.location_type === 'collab_chocolate').length;
+    const pendingFund  = allChocolateShops.filter(b => b.location_type === 'house_chocolate' && b.founding_patron_id == null).length;
+
+    const thStyle = `padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);white-space:nowrap;`;
+    const tdStyle = `padding:10px 8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);`;
+    const tdMono  = `padding:10px 8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);`;
+
+    // ── Summary cards ──
+    const summaryHtml = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div class="stat-card">
+          <div class="stat-value">${total}</div>
+          <div class="stat-label">TOTAL LOCATIONS</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${inaugurated}</div>
+          <div class="stat-label">INAUGURATED</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${collabs}</div>
+          <div class="stat-label">COLLABORATIONS</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${pendingFund}</div>
+          <div class="stat-label">PENDING FUNDING</div>
+        </div>
+      </div>`;
+
+    // ── Create form ──
+    const createFormHtml = `
+      <div class="section-label">Create Location</div>
+      <div class="form-card">
+        <div class="form-title">New Chocolate Location</div>
+        <div class="form-row">
+          <div class="form-label">Type</div>
+          <div style="display:flex;gap:20px;align-items:center;padding:4px 0;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);">
+              <input type="radio" name="choc-type" value="house" id="choc-type-house" checked
+                style="accent-color:var(--amber);width:16px;height:16px;cursor:pointer;"
+                onchange="toggleChocolateTypeFields()" />
+              Maison Fraise House
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);">
+              <input type="radio" name="choc-type" value="collab" id="choc-type-collab"
+                style="accent-color:var(--amber);width:16px;height:16px;cursor:pointer;"
+                onchange="toggleChocolateTypeFields()" />
+              Collaboration
+            </label>
+          </div>
+        </div>
+
+        <div id="choc-house-fields">
+          <div class="form-row"><div class="form-label">Name</div><input class="form-input" id="choc-house-name" placeholder="Maison Fraise Outremont" /></div>
+          <div class="form-row"><div class="form-label">Address</div><input class="form-input" id="choc-house-address" placeholder="123 Avenue Bernard" /></div>
+          <div class="form-row">
+            <div class="form-label">Operating Cost (10-year total)</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-family:'DM Mono',monospace;font-size:13px;color:var(--muted);white-space:nowrap;">CA$</span>
+              <input class="form-input" id="choc-house-cost" type="number" step="0.01" min="0" placeholder="0.00" style="flex:1;" />
+            </div>
+          </div>
+        </div>
+
+        <div id="choc-collab-fields" style="display:none;">
+          <div class="form-row"><div class="form-label">Partner Name</div><input class="form-input" id="choc-collab-partner" placeholder="Chocolaterie du Parc" /></div>
+          <div class="form-row"><div class="form-label">Address</div><input class="form-input" id="choc-collab-address" placeholder="456 Rue Laurier" /></div>
+        </div>
+
+        <button class="action-btn primary" onclick="createChocolateLocation()" style="align-self:flex-start;padding:12px 28px;">Create</button>
+        <div id="choc-create-error" style="font-family:'DM Mono',monospace;font-size:12px;color:#E05A5A;min-height:16px;"></div>
+      </div>`;
+
+    // ── Locations table ──
+    const tableRows = allChocolateShops.length === 0
+      ? `<tr><td colspan="8" style="text-align:center;padding:24px 0;color:var(--muted);font-style:italic;font-family:'DM Sans',sans-serif;font-size:14px;">No chocolate locations yet.</td></tr>`
+      : allChocolateShops.map(b => {
+          const isHouse = b.location_type === 'house_chocolate';
+
+          const typeBadge = isHouse
+            ? `<span class="status-badge" style="background:rgba(155,89,182,0.18);color:#b07fe8;">House</span>`
+            : `<span class="status-badge" style="background:rgba(100,160,255,0.14);color:rgba(130,190,255,0.9);">Collab</span>`;
+
+          const nameCell = isHouse
+            ? (b.name || '—').replace(/</g, '&lt;')
+            : `MAISON FRAISE × ${(b.partner_name || b.name || '—').replace(/</g, '&lt;')}`;
+
+          let statusBadge;
+          if (isHouse && b.inaugurated_at) {
+            statusBadge = `<span class="status-badge" style="background:rgba(80,200,120,0.12);color:rgba(100,210,140,0.9);">Inaugurated</span>`;
+          } else if (isHouse && !b.inaugurated_at) {
+            statusBadge = `<span class="status-badge" style="background:rgba(201,151,58,0.18);color:#D4A843;">Awaiting Patron</span>`;
+          } else {
+            statusBadge = `<span style="color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;">—</span>`;
+          }
+
+          const costCell = b.operating_cost_cents != null
+            ? fmtCAD(b.operating_cost_cents)
+            : `<span style="color:var(--muted);">—</span>`;
+
+          const patronCell = b.founding_patron_name || b.founding_patron_email
+            ? (b.founding_patron_name || b.founding_patron_email).replace(/</g, '&lt;')
+            : `<span style="color:var(--muted);">—</span>`;
+
+          return `<tr>
+            <td style="padding:10px 8px;">${typeBadge}</td>
+            <td style="${tdStyle}">${nameCell}</td>
+            <td style="${tdStyle}">${(b.address || '—').replace(/</g, '&lt;')}</td>
+            <td style="padding:10px 8px;">${statusBadge}</td>
+            <td style="${tdMono}">${costCell}</td>
+            <td style="${tdStyle}">${patronCell}</td>
+            <td style="${tdMono}">${fmtDate(b.term_ends_at)}</td>
+            <td style="padding:10px 8px;">
+              <button class="action-btn" style="font-size:10px;padding:6px 12px;white-space:nowrap;" onclick="openEditChocolateModal(${b.id})">Edit</button>
+            </td>
+          </tr>`;
+        }).join('');
+
+    const tableHtml = `
+      <div class="section-label" style="margin-top:8px;">Locations</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="${thStyle}">Type</th>
+              <th style="${thStyle}">Name / Partner</th>
+              <th style="${thStyle}">Address</th>
+              <th style="${thStyle}">Status</th>
+              <th style="${thStyle}">Operating Cost</th>
+              <th style="${thStyle}">Founding Patron</th>
+              <th style="${thStyle}">Term Ends</th>
+              <th style="${thStyle}">Actions</th>
+            </tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>`;
+
+    // ── Location Funding (lazy) ──
+    const fundingHtml = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px;margin-bottom:8px;">
+        <div class="section-label" style="margin:0;">Location Funding</div>
+        <button class="action-btn" onclick="loadLocationFunding()" style="flex-shrink:0;">Load Funding Records</button>
+      </div>
+      <div id="choc-funding-container"></div>`;
+
+    body.innerHTML = summaryHtml + createFormHtml + tableHtml + fundingHtml;
+  }
+
+  function toggleChocolateTypeFields() {
+    const isHouse = document.getElementById('choc-type-house').checked;
+    document.getElementById('choc-house-fields').style.display = isHouse ? '' : 'none';
+    document.getElementById('choc-collab-fields').style.display = isHouse ? 'none' : '';
+  }
+
+  async function createChocolateLocation() {
+    const errEl = document.getElementById('choc-create-error');
+    errEl.textContent = '';
+    const isHouse = document.getElementById('choc-type-house').checked;
+
+    let payload;
+    if (isHouse) {
+      const name    = document.getElementById('choc-house-name').value.trim();
+      const address = document.getElementById('choc-house-address').value.trim();
+      const costDollars = parseFloat(document.getElementById('choc-house-cost').value);
+      if (!name || !address) { errEl.textContent = 'Name and address are required.'; return; }
+      payload = {
+        name,
+        location_type: 'house_chocolate',
+        address,
+        operating_cost_cents: !isNaN(costDollars) && costDollars > 0 ? Math.round(costDollars * 100) : null,
+        approved_by_admin: true,
+      };
+    } else {
+      const partnerName = document.getElementById('choc-collab-partner').value.trim();
+      const address     = document.getElementById('choc-collab-address').value.trim();
+      if (!partnerName || !address) { errEl.textContent = 'Partner name and address are required.'; return; }
+      payload = {
+        name: partnerName,
+        location_type: 'collab_chocolate',
+        partner_name: partnerName,
+        address,
+        approved_by_admin: true,
+      };
+    }
+
+    const res = await fetch(BASE + '/api/admin/businesses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      await loadChocolateShops();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      errEl.textContent = err.error || 'Failed to create location.';
+    }
+  }
+
+  function openEditChocolateModal(id) {
+    const b = allChocolateShops.find(x => x.id === id);
+    const existing = document.getElementById('edit-chocolate-modal');
+    if (existing) existing.remove();
+
+    const nameVal        = b ? (b.name || '') : '';
+    const addressVal     = b ? (b.address || '') : '';
+    const partnerVal     = b ? (b.partner_name || '') : '';
+    const costDollars    = b && b.operating_cost_cents != null ? (b.operating_cost_cents / 100).toFixed(2) : '';
+    const isHouse        = b && b.location_type === 'house_chocolate';
+    const typeOpts       = ['house_chocolate', 'collab_chocolate'].map(t =>
+      `<option value="${t}" ${b && b.location_type === t ? 'selected' : ''}>${t === 'house_chocolate' ? 'Maison Fraise House' : 'Collaboration'}</option>`
+    ).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'edit-chocolate-modal';
+    modal.className = 'modal-backdrop';
+    modal.innerHTML = `
+      <div class="modal-box">
+        <div class="modal-header">
+          <div class="modal-title">Edit Location</div>
+          <button class="modal-close" onclick="closeEditChocolateModal()">×</button>
+        </div>
+        <div class="modal-body" style="gap:14px;">
+          <div class="form-row"><div class="form-label">Type</div>
+            <select class="form-select" id="ech-type">${typeOpts}</select>
+          </div>
+          <div class="form-row"><div class="form-label">Name</div><input class="form-input" id="ech-name" value="${nameVal.replace(/"/g,'&quot;')}" /></div>
+          <div class="form-row"><div class="form-label">Address</div><input class="form-input" id="ech-address" value="${addressVal.replace(/"/g,'&quot;')}" /></div>
+          <div class="form-row"><div class="form-label">Partner Name</div><input class="form-input" id="ech-partner" value="${partnerVal.replace(/"/g,'&quot;')}" placeholder="Collab only" /></div>
+          <div class="form-row">
+            <div class="form-label">Operating Cost (CA$, 10-year total)</div>
+            <input class="form-input" id="ech-cost" type="number" step="0.01" min="0" value="${costDollars}" placeholder="0.00" />
+          </div>
+          <div class="action-row">
+            <button class="action-btn primary" onclick="saveChocolateEdit(${id})">Save Changes</button>
+            <button class="action-btn" onclick="closeEditChocolateModal()">Cancel</button>
+          </div>
+          <div id="ech-error" style="font-family:'DM Mono',monospace;font-size:12px;color:#E05A5A;min-height:16px;"></div>
+        </div>
+      </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) closeEditChocolateModal(); });
+    document.body.appendChild(modal);
+  }
+
+  function closeEditChocolateModal() {
+    const modal = document.getElementById('edit-chocolate-modal');
+    if (modal) modal.remove();
+  }
+
+  async function saveChocolateEdit(id) {
+    const errEl       = document.getElementById('ech-error');
+    const name        = document.getElementById('ech-name').value.trim();
+    const address     = document.getElementById('ech-address').value.trim();
+    const partner_name = document.getElementById('ech-partner').value.trim() || null;
+    const location_type = document.getElementById('ech-type').value;
+    const costDollars = parseFloat(document.getElementById('ech-cost').value);
+    const operating_cost_cents = !isNaN(costDollars) && costDollars > 0 ? Math.round(costDollars * 100) : null;
+
+    if (!name || !address) { errEl.textContent = 'Name and address are required.'; return; }
+    errEl.textContent = '';
+
+    const res = await fetch(`${BASE}/api/admin/businesses/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+      body: JSON.stringify({ name, address, partner_name, location_type, operating_cost_cents }),
+    });
+
+    if (res.ok) {
+      closeEditChocolateModal();
+      await loadChocolateShops();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      errEl.textContent = err.error || 'Failed to save.';
+    }
+  }
+
+  async function loadLocationFunding() {
+    const container = document.getElementById('choc-funding-container');
+    if (!container) return;
+    container.innerHTML = '<div class="empty">Loading…</div>';
+
+    const res = await fetch(BASE + '/api/admin/location-funding', { headers: { 'X-Admin-PIN': currentPin } });
+    if (!res.ok) { container.innerHTML = '<div class="empty">Failed to load funding records.</div>'; return; }
+    const records = await res.json();
+    if (!records.length) { container.innerHTML = '<div class="empty">No funding records yet.</div>'; return; }
+
+    const thStyle = `padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);white-space:nowrap;`;
+    const tdStyle = `padding:10px 8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);`;
+    const tdMono  = `padding:10px 8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);`;
+
+    const rows = records.map(r => `<tr>
+      <td style="${tdStyle}">${(r.business_name || r.business_id || '—').toString().replace(/</g,'&lt;')}</td>
+      <td style="${tdStyle}">${(r.user_name || r.user_email || '—').toString().replace(/</g,'&lt;')}</td>
+      <td style="${tdMono}">${r.amount_cents != null ? fmtCAD(r.amount_cents) : '—'}</td>
+      <td style="padding:10px 8px;"><span class="status-badge s-${r.status || 'pending'}">${r.status || '—'}</span></td>
+      <td style="${tdMono}">${fmtDate(r.created_at)}</td>
+    </tr>`).join('');
+
+    container.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+              <th style="${thStyle}">Business</th>
+              <th style="${thStyle}">User</th>
+              <th style="${thStyle}">Amount</th>
+              <th style="${thStyle}">Status</th>
+              <th style="${thStyle}">Date</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
   }
 
   async function updateVariety(id) {
