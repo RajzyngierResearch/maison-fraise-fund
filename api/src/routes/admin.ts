@@ -274,7 +274,7 @@ router.get('/varieties', async (_req: Request, res: Response) => {
       GROUP BY variety_id
     `);
     const ratingMap = Object.fromEntries(
-      Array.from(ratings).map(r => [r.variety_id, { avg_rating: r.avg_rating, rating_count: r.rating_count }])
+      (ratings as any[]).map(r => [r.variety_id, { avg_rating: r.avg_rating, rating_count: r.rating_count }])
     );
     const result = vars.map(v => ({ ...v, ...(ratingMap[v.id] ?? { avg_rating: null, rating_count: 0 }) }));
 
