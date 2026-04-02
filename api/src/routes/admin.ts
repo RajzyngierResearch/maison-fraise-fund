@@ -59,6 +59,8 @@ router.get('/orders', async (_req: Request, res: Response) => {
         stripe_payment_intent_id: orders.stripe_payment_intent_id,
         status: orders.status,
         customer_email: orders.customer_email,
+        rating: orders.rating,
+        rating_note: orders.rating_note,
         created_at: orders.created_at,
       })
       .from(orders)
@@ -551,6 +553,32 @@ router.get('/popups/:id/nominations', async (req: Request, res: Response) => {
     })));
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/popups/:id — edit popup fields (partial update)
+router.patch('/popups/:id', requirePin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id);
+  const { name, address, neighbourhood, hours, capacity, launched_at, ends_at, organizer_note, entrance_fee_cents, dj_name, contact } = req.body;
+  const updates: Record<string, any> = {};
+  if (name !== undefined) updates.name = name;
+  if (address !== undefined) updates.address = address;
+  if (neighbourhood !== undefined) updates.neighbourhood = neighbourhood;
+  if (hours !== undefined) updates.hours = hours;
+  if (capacity !== undefined) updates.capacity = capacity;
+  if (launched_at !== undefined) updates.launched_at = new Date(launched_at);
+  if (ends_at !== undefined) updates.ends_at = new Date(ends_at);
+  if (organizer_note !== undefined) updates.organizer_note = organizer_note;
+  if (entrance_fee_cents !== undefined) updates.entrance_fee_cents = entrance_fee_cents;
+  if (dj_name !== undefined) updates.dj_name = dj_name;
+  if (contact !== undefined) updates.contact = contact;
+  if (Object.keys(updates).length === 0) { res.status(400).json({ error: 'no_fields' }); return; }
+  try {
+    const [updated] = await db.update(businesses).set(updates).where(eq(businesses.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: 'internal' });
   }
 });
 

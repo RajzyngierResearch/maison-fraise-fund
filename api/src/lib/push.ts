@@ -6,6 +6,7 @@ interface PushPayload {
   data?: Record<string, unknown>;
 }
 
+// TODO: check notification_prefs before sending
 export async function sendPushNotification(pushToken: string, payload: PushPayload): Promise<void> {
   if (!pushToken.startsWith('ExponentPushToken[') && !pushToken.startsWith('ExpoPushToken[')) {
     logger.warn('Skipping push — not an Expo token:', pushToken);

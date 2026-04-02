@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, SafeAreaView, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColors, fonts } from '../theme';
 import { SPACING } from '../theme';
+import { applyReferralCode } from '../lib/api';
 
 const { width: W } = Dimensions.get('window');
 
@@ -34,8 +35,25 @@ interface Props {
 export default function OnboardingScreen({ onDone }: Props) {
   const c = useColors();
   const [step, setStep] = useState(0);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const current = STEPS[step];
   const isLast = step === STEPS.length - 1;
+
+  React.useEffect(() => {
+    AsyncStorage.getItem('user_db_id').then(id => setIsLoggedIn(!!id));
+  }, []);
+
+  const handleReferralCode = () => {
+    Alert.prompt('Referral Code', 'Enter your code for 10% off your first order', async (code) => {
+      if (!code) return;
+      try {
+        await applyReferralCode(code.toUpperCase());
+        Alert.alert('', '10% discount applied to your first order 🍓');
+      } catch {
+        Alert.alert('', 'Code not found or already used.');
+      }
+    });
+  };
 
   const handleNext = async () => {
     if (isLast) {
@@ -76,6 +94,12 @@ export default function OnboardingScreen({ onDone }: Props) {
           <Text style={styles.btnText}>{isLast ? 'GET STARTED' : 'CONTINUE'}</Text>
         </TouchableOpacity>
 
+        {isLast && isLoggedIn && (
+          <TouchableOpacity onPress={handleReferralCode} style={styles.referralBtn} activeOpacity={0.7}>
+            <Text style={[styles.referralText, { color: c.muted }]}>Have a referral code?</Text>
+          </TouchableOpacity>
+        )}
+
         {isLast && (
           <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
             <Text style={[styles.skipText, { color: c.muted }]}>Skip</Text>
@@ -98,6 +122,8 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   btn: { width: '100%', paddingVertical: 18, borderRadius: 30, alignItems: 'center' },
   btnText: { fontFamily: fonts.dmMono, fontSize: 12, letterSpacing: 2, color: '#0C0C0E' },
+  referralBtn: { marginTop: 16, paddingVertical: 6, alignItems: 'center' },
+  referralText: { fontFamily: fonts.dmMono, fontSize: 12, textAlign: 'center' },
   skipBtn: { marginTop: 20, paddingVertical: 8 },
   skipText: { fontFamily: fonts.dmSans, fontSize: 13 },
 });

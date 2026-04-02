@@ -111,6 +111,13 @@ export default function ReviewPanel() {
         const { error: initErr } = await initPaymentSheet({
           merchantDisplayName: 'Maison Fraise',
           paymentIntentClientSecret: client_secret,
+          applePay: {
+            merchantCountryCode: 'CA',
+          },
+          googlePay: {
+            merchantCountryCode: 'CA',
+            testEnv: __DEV__,
+          },
           defaultBillingDetails: { email },
           appearance: {
             colors: {

@@ -785,3 +785,19 @@ export async function applyReferralCode(code: string): Promise<{ discount_percen
   if (!r.ok) throw new Error('invalid_code');
   return r.json();
 }
+
+export async function fetchNotificationPrefs(): Promise<{ order_updates: boolean; social: boolean; popup_updates: boolean; marketing: boolean }> {
+  const headers = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/users/me/notification-prefs`, { headers });
+  if (!r.ok) return { order_updates: true, social: true, popup_updates: true, marketing: true };
+  return r.json();
+}
+
+export async function updateNotificationPrefs(prefs: { order_updates?: boolean; social?: boolean; popup_updates?: boolean; marketing?: boolean }): Promise<void> {
+  const headers = await authHeader();
+  await fetch(`${BASE_URL}/api/users/me/notification-prefs`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(prefs),
+  });
+}

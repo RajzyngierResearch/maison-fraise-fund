@@ -16,6 +16,7 @@ import {
   fetchHostedPopups, fetchActiveContract, fetchFollowerCount, logMemberVisit,
   fetchLegitimacyBreakdown, updateDisplayName, cancelPopupRsvp, fetchAuthToken,
   demoLogin, fetchSetupIntent, savePaymentMethod, fetchMyReferralCode, applyReferralCode,
+  fetchNotificationPrefs, updateNotificationPrefs,
 } from '../../lib/api';
 import { CHOCOLATES, FINISHES } from '../../data/seed';
 import { useColors, fonts } from '../../theme';
@@ -54,6 +55,7 @@ export default function ProfilePanel() {
   const [paymentSaved, setPaymentSaved] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [referralUses, setReferralUses] = useState(0);
+  const [notifPrefs, setNotifPrefs] = useState<{ order_updates: boolean; social: boolean; popup_updates: boolean; marketing: boolean } | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -88,6 +90,7 @@ export default function ProfilePanel() {
         fetchFollowerCount(uid).then(r => setFollowerCount(r.follower_count)).catch(() => {});
         fetchLegitimacyBreakdown(uid).then(setLegitimacy).catch(() => {});
         fetchMyReferralCode().then(r => { setReferralCode(r.code); setReferralUses(r.uses); }).catch(() => {});
+        fetchNotificationPrefs().then(setNotifPrefs).catch(() => {});
         if (verifiedBool) {
           fetchUserPopupRsvps(uid).then(setUpcomingPopups).catch(() => {});
           fetchHostedPopups(uid).then(setHostedPopups).catch(() => {});
@@ -308,6 +311,13 @@ export default function ProfilePanel() {
         Alert.alert('Invalid code', 'That code could not be applied. Please check and try again.');
       }
     });
+  };
+
+  const handleNotifToggle = (key: 'order_updates' | 'social' | 'popup_updates' | 'marketing', value: boolean) => {
+    if (!notifPrefs) return;
+    const updated = { ...notifPrefs, [key]: value };
+    setNotifPrefs(updated);
+    updateNotificationPrefs({ [key]: value }).catch(() => {});
   };
 
   const handleSignOut = () => {
@@ -839,6 +849,36 @@ export default function ProfilePanel() {
               </View>
             )}
 
+            {/* Notification preferences */}
+            {userDbId && notifPrefs && (
+              <View style={[styles.notifCard, { backgroundColor: c.card, borderColor: c.border }]}>
+                <Text style={[styles.sectionLabel, { color: c.muted }]}>NOTIFICATIONS</Text>
+                {(
+                  [
+                    { key: 'order_updates' as const, label: 'Order updates' },
+                    { key: 'social' as const, label: 'Social' },
+                    { key: 'popup_updates' as const, label: 'Popup updates' },
+                    { key: 'marketing' as const, label: 'Marketing' },
+                  ] as const
+                ).map(({ key, label }, index, arr) => (
+                  <View key={key}>
+                    <View style={styles.notifRow}>
+                      <Text style={[styles.notifLabel, { color: c.text }]}>{label}</Text>
+                      <Switch
+                        value={notifPrefs[key]}
+                        onValueChange={v => handleNotifToggle(key, v)}
+                        trackColor={{ false: c.border, true: c.accent }}
+                        thumbColor="#fff"
+                      />
+                    </View>
+                    {index < arr.length - 1 && (
+                      <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+
             {/* Verification hint for unverified */}
             {!isVerified && (
               <View style={styles.verifyHint}>
@@ -1025,4 +1065,13 @@ const styles = StyleSheet.create({
   shareBtnText: { fontSize: 14, fontFamily: fonts.dmSans, fontWeight: '700' },
   haveCodeLink: { alignItems: 'center', paddingVertical: 4 },
   haveCodeText: { fontSize: 11, fontFamily: fonts.dmMono },
+
+  notifCard: {
+    borderRadius: 14, padding: SPACING.md, borderWidth: StyleSheet.hairlineWidth, gap: 6,
+  },
+  notifRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  notifLabel: { fontSize: 14, fontFamily: fonts.dmSans },
 });

@@ -222,9 +222,13 @@ router.post('/payment-intent', async (req: Request, res: Response) => {
       return;
     }
 
-    // Stock guard (task 2)
+    // Stock guard
+    if (variety.stock_remaining <= 0) {
+      res.status(409).json({ error: 'sold_out' });
+      return;
+    }
     if (variety.stock_remaining < quantity) {
-      res.status(409).json({ error: 'insufficient_stock' });
+      res.status(409).json({ error: 'insufficient_stock', available: variety.stock_remaining });
       return;
     }
 

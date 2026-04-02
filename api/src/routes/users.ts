@@ -856,4 +856,32 @@ router.post('/me/apply-referral', requireUser, async (req: Request, res: Respons
   }
 });
 
+const DEFAULT_NOTIFICATION_PREFS = { order_updates: true, social: true, popup_updates: true, marketing: true };
+
+// GET /api/users/me/notification-prefs
+router.get('/me/notification-prefs', requireUser, async (req: Request, res: Response) => {
+  const user_id = (req as any).userId as number;
+  try {
+    const [user] = await db.select({ notification_prefs: users.notification_prefs }).from(users).where(eq(users.id, user_id));
+    if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+    res.json(user.notification_prefs ?? DEFAULT_NOTIFICATION_PREFS);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/users/me/notification-prefs
+router.patch('/me/notification-prefs', requireUser, async (req: Request, res: Response) => {
+  const user_id = (req as any).userId as number;
+  const { order_updates, social, popup_updates, marketing } = req.body;
+  const prefs = { order_updates: !!order_updates, social: !!social, popup_updates: !!popup_updates, marketing: !!marketing };
+  try {
+    const [updated] = await db.update(users).set({ notification_prefs: prefs }).where(eq(users.id, user_id)).returning({ notification_prefs: users.notification_prefs });
+    if (!updated) { res.status(404).json({ error: 'User not found' }); return; }
+    res.json(updated.notification_prefs);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

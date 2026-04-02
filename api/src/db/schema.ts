@@ -144,6 +144,7 @@ export const users = pgTable('users', {
   campaign_interest: boolean('campaign_interest').notNull().default(false),
   stripe_customer_id: text('stripe_customer_id'),
   referred_by_code: text('referred_by_code'),
+  notification_prefs: jsonb('notification_prefs').$type<{ order_updates: boolean; social: boolean; popup_updates: boolean; marketing: boolean } | null>().default(null),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 

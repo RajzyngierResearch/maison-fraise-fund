@@ -125,13 +125,14 @@ export default function HomePanel() {
     return bizVarieties.map(v => {
       const freshColor = v.freshnessColor ?? c.accent;
       const label = freshnessLabel(v.freshnessLevel);
-      const stockLow = v.stock_remaining <= 3;
+      const isSoldOut = v.stock_remaining <= 0;
+      const stockLow = !isSoldOut && v.stock_remaining <= 3;
       return (
         <TouchableOpacity
           key={v.id}
-          style={[styles.varietyRow, { borderTopColor: c.border }]}
-          onPress={() => handleVarietyPress(v, biz)}
-          activeOpacity={0.75}
+          style={[styles.varietyRow, { borderTopColor: c.border, opacity: isSoldOut ? 0.5 : 1 }]}
+          onPress={isSoldOut ? undefined : () => handleVarietyPress(v, biz)}
+          activeOpacity={isSoldOut ? 1 : 0.75}
         >
           <View style={styles.rowMain}>
             <Text style={[styles.varietyName, { color: c.text }]}>{v.name}</Text>
@@ -159,9 +160,9 @@ export default function HomePanel() {
             <Image source={{ uri: v.image_url }} style={[styles.varietyThumb, { backgroundColor: c.border }]} />
           )}
           <View style={styles.rowRight}>
-            <Text style={[styles.price, { color: c.text }]}>CA${(v.price_cents / 100).toFixed(2)}</Text>
-            <Text style={[styles.stock, { color: stockLow ? '#FF3B30' : c.muted }]}>
-              {stockLow ? 'Almost gone' : `${v.stock_remaining} left`}
+            <Text style={[styles.price, { color: isSoldOut ? c.muted : c.text }]}>CA${(v.price_cents / 100).toFixed(2)}</Text>
+            <Text style={[styles.stock, { color: isSoldOut ? '#FF3B30' : stockLow ? '#FF3B30' : c.muted }]}>
+              {isSoldOut ? 'Sold out' : stockLow ? 'Almost gone' : `${v.stock_remaining} left`}
             </Text>
           </View>
         </TouchableOpacity>
