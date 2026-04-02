@@ -187,6 +187,21 @@ export default function MapScreen() {
       jumpToPanel('contract-offer');
       TrueSheet.present(SHEET_NAME, 2);
     }
+    if (pendingScreen === 'nomination-history') {
+      clearPendingScreen();
+      jumpToPanel('nomination-history');
+      setTimeout(() => TrueSheet.present(SHEET_NAME, 2), 350);
+    }
+    if (pendingScreen === 'notification-inbox') {
+      clearPendingScreen();
+      jumpToPanel('notification-inbox');
+      setTimeout(() => TrueSheet.present(SHEET_NAME, 2), 350);
+    }
+    if (pendingScreen === 'activity-feed') {
+      clearPendingScreen();
+      jumpToPanel('activity-feed');
+      setTimeout(() => TrueSheet.present(SHEET_NAME, 2), 350);
+    }
   }, [pendingScreen, businesses]);
 
   const loadBusinesses = () => {

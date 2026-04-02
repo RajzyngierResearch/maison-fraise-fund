@@ -3,8 +3,9 @@ import Stripe from 'stripe';
 import { eq } from 'drizzle-orm';
 import { stripe } from '../lib/stripe';
 import { db } from '../db';
-import { orders, popupRsvps, popupRequests, campaignCommissions, users } from '../db/schema';
+import { orders, popupRsvps, popupRequests, campaignCommissions, users, businesses } from '../db/schema';
 import { sendPushNotification } from '../lib/push';
+import { sendRsvpConfirmed } from '../lib/resend';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -54,6 +55,26 @@ router.post('/webhook', async (req: Request, res: Response) => {
         if (rsvp && rsvp.status === 'pending') {
           await db.update(popupRsvps).set({ status: 'paid' }).where(eq(popupRsvps.id, rsvp.id));
           logger.info(`Popup RSVP ${rsvp.id} marked paid via webhook`);
+
+          // Send RSVP confirmation email (fire-and-forget)
+          const user_id = rsvp.user_id;
+          const popup_id = rsvp.popup_id;
+          Promise.all([
+            db.select({ email: users.email }).from(users).where(eq(users.id, user_id)),
+            db.select({ name: businesses.name, starts_at: businesses.starts_at }).from(businesses).where(eq(businesses.id, popup_id)),
+          ]).then(([[user], [popup]]) => {
+            if (user?.email && popup) {
+              const popupDateStr = popup.starts_at
+                ? new Date(popup.starts_at).toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })
+                : null;
+              sendRsvpConfirmed({
+                to: user.email,
+                popupName: popup.name,
+                popupDate: popupDateStr,
+                feeCents: pi.amount,
+              }).catch(() => {});
+            }
+          }).catch(() => {});
         }
       } else if (type === 'popup_request') {
         const [request] = await db

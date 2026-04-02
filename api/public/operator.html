@@ -723,6 +723,10 @@
     const daysUntil = iso => Math.ceil((new Date(iso) - Date.now()) / 86400000);
 
     body.innerHTML = `
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="action-btn" onclick="completeExpiredContracts()" style="font-size:10px;">Complete Expired</button>
+      </div>
+
       ${expiring.length ? `
       <div class="section-heading" style="color:#C0392B">⚠ Expiring Within 14 Days</div>
       <div class="form-card" style="border-left: 3px solid #C0392B; margin-bottom:16px;">
@@ -815,6 +819,20 @@
     else { const e = await res.json(); alert(e.error || 'Failed'); }
   }
 
+  async function completeExpiredContracts() {
+    const res = await fetch(BASE + '/api/admin/contracts/complete-expired', {
+      method: 'POST',
+      headers: { 'X-Admin-PIN': currentPin },
+    });
+    if (res.ok) {
+      const { completed } = await res.json();
+      alert(completed > 0 ? `Marked ${completed} contract(s) as completed.` : 'No expired contracts found.');
+      if (completed > 0) renderTalentTab();
+    } else {
+      alert('Failed.');
+    }
+  }
+
   // ── REVENUE TAB ───────────────────────────────────────
   async function renderRevenueTab() {
     const body = document.getElementById('dash-body');
@@ -851,7 +869,7 @@
             <div class="order-variety">${o.variety_name || 'Variety'}</div>
             <div class="order-details">${new Date(o.created_at).toLocaleDateString('en-CA')}</div>
           </div>
-        `).join('') || '<div class="empty">No recent orders.</div>'}
+        `).join('') || '<div class="empty">No paid orders yet.</div>'}
       `;
     } catch (e) {
       body.innerHTML = '<div class="empty">Could not load revenue.</div>';
@@ -1048,7 +1066,7 @@
                 <div style="font-family:'Playfair Display',serif;font-size:16px;">${v.name}</div>
                 <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">CA$${(v.price_cents/100).toFixed(2)} · stock: ${v.stock_remaining}</div>
               </div>
-              <span style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;color:${v.active?'rgba(80,200,120,0.9)':'#E05A5A'}">${v.active?'ACTIVE':'INACTIVE'}</span>
+              <span data-active style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;color:${v.active?'rgba(80,200,120,0.9)':'#E05A5A'}">${v.active?'ACTIVE':'INACTIVE'}</span>
             </div>
             <div class="form-row">
               <select class="form-input" id="v-loc-${v.id}">${locationOpts}</select>
@@ -1057,7 +1075,11 @@
                 <option value="false" ${!v.active?'selected':''}>Inactive</option>
               </select>
             </div>
-            <button class="action-btn primary" onclick="updateVariety(${v.id})" style="align-self:flex-start;">Save</button>
+            <textarea class="form-input" id="v-desc-${v.id}" rows="2" placeholder="Description (optional)" style="resize:vertical;">${v.description || ''}</textarea>
+            <div class="form-row">
+              <input class="form-input" id="v-stock-${v.id}" type="number" min="0" value="${v.stock_remaining}" placeholder="Stock" />
+            </div>
+            <button class="action-btn primary save-btn-${v.id}" onclick="updateVariety(${v.id})" style="align-self:flex-start;">Save</button>
           </div>
         `).join('')
       }
@@ -1073,23 +1095,38 @@
   async function updateVariety(id) {
     const locEl = document.getElementById('v-loc-' + id);
     const activeEl = document.getElementById('v-active-' + id);
+    const descEl = document.getElementById('v-desc-' + id);
+    const stockEl = document.getElementById('v-stock-' + id);
+
     const location_id = locEl.value ? parseInt(locEl.value) : null;
     const active = activeEl.value === 'true';
+    const description = descEl.value.trim() || null;
+    const stock_remaining = parseInt(stockEl.value);
 
-    const res = await fetch(BASE + '/api/admin/varieties/' + id, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
-      body: JSON.stringify({ location_id, active }),
-    });
-    if (res.ok) {
+    const [r1, r2] = await Promise.all([
+      fetch(BASE + '/api/admin/varieties/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+        body: JSON.stringify({ location_id, active, description }),
+      }),
+      isNaN(stock_remaining) ? Promise.resolve({ ok: true }) : fetch(BASE + '/api/admin/varieties/' + id + '/stock', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+        body: JSON.stringify({ stock_remaining }),
+      }),
+    ]);
+
+    if (r1.ok && r2.ok) {
       const card = document.getElementById('variety-card-' + id);
       if (card) {
-        const badge = card.querySelector('span');
+        const badge = card.querySelector('span[data-active]');
         if (badge) {
           badge.style.color = active ? 'rgba(80,200,120,0.9)' : '#E05A5A';
           badge.textContent = active ? 'ACTIVE' : 'INACTIVE';
         }
       }
+      const btn = card?.querySelector('.save-btn-' + id);
+      if (btn) { btn.textContent = 'Saved ✓'; setTimeout(() => { btn.textContent = 'Save'; }, 1500); }
     } else {
       alert('Failed to update variety.');
     }

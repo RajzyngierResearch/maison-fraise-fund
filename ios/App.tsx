@@ -92,6 +92,15 @@ export default function App() {
       if (screen === 'contract_offer') {
         setPendingScreen('contract-offer');
       }
+      if (screen === 'nomination-history') {
+        setPendingScreen('nomination-history');
+      }
+      if (screen === 'notification-inbox') {
+        setPendingScreen('notification-inbox');
+      }
+      if (screen === 'activity-feed') {
+        setPendingScreen('activity-feed');
+      }
     });
     return () => sub.remove();
   }, []);

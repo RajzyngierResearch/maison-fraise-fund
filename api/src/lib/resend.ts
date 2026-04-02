@@ -173,3 +173,82 @@ export async function sendOrderReady(params: {
     html: baseTemplate(content, 'Your order is ready.'),
   });
 }
+
+export async function sendContractOffer(params: {
+  to: string;
+  businessName: string;
+  neighbourhood: string | null;
+  startsAt: Date;
+  endsAt: Date;
+}) {
+  const { to, businessName, neighbourhood, startsAt, endsAt } = params;
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const fmt = (d: Date) => `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  const content = `
+    <p style="margin:0 0 24px;font-size:16px;color:rgba(242,242,247,0.65);line-height:1.75;font-family:Georgia,'Times New Roman',serif;">
+      You've been offered a placement at <strong style="color:#F2F2F7;">${businessName}</strong>${neighbourhood ? ` in ${neighbourhood}` : ''}. Open the app to accept or decline.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      ${row('Placement', businessName)}
+      ${row('Starts', fmt(startsAt))}
+      ${row('Ends', fmt(endsAt))}
+    </table>
+    <p style="margin:0;font-size:13px;color:rgba(242,242,247,0.38);line-height:1.75;font-family:'Courier New',Courier,monospace;letter-spacing:0.2px;">
+      Reply to this email with any questions.
+    </p>
+  `;
+  await resend.emails.send({
+    from: FROM, to, replyTo: REPLY_TO,
+    subject: `Placement offer — ${businessName}`,
+    html: baseTemplate(content, 'You\'ve been placed.'),
+  });
+}
+
+export async function sendNominationReceived(params: {
+  to: string;
+  nominatorName: string;
+  popupName: string;
+  popupDate: string | null;
+}) {
+  const { to, nominatorName, popupName, popupDate } = params;
+  const content = `
+    <p style="margin:0 0 24px;font-size:16px;color:rgba(242,242,247,0.65);line-height:1.75;font-family:Georgia,'Times New Roman',serif;">
+      <strong style="color:#F2F2F7;">${nominatorName}</strong> nominated you for <strong style="color:#F2F2F7;">${popupName}</strong>${popupDate ? ` on ${popupDate}` : ''}. Open the app to see the full nomination.
+    </p>
+    <p style="margin:0;font-size:13px;color:rgba(242,242,247,0.38);line-height:1.75;font-family:'Courier New',Courier,monospace;letter-spacing:0.2px;">
+      Nominations reflect the community's interest in having you at a Maison Fraise event.
+    </p>
+  `;
+  await resend.emails.send({
+    from: FROM, to, replyTo: REPLY_TO,
+    subject: `You've been nominated — ${popupName}`,
+    html: baseTemplate(content, 'You\'ve been nominated.'),
+  });
+}
+
+export async function sendRsvpConfirmed(params: {
+  to: string;
+  popupName: string;
+  popupDate: string | null;
+  feeCents: number;
+}) {
+  const { to, popupName, popupDate, feeCents } = params;
+  const content = `
+    <p style="margin:0 0 24px;font-size:16px;color:rgba(242,242,247,0.65);line-height:1.75;font-family:Georgia,'Times New Roman',serif;">
+      You're confirmed for <strong style="color:#F2F2F7;">${popupName}</strong>${popupDate ? ` on ${popupDate}` : ''}.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      ${row('Event', popupName)}
+      ${popupDate ? row('Date', popupDate) : ''}
+      ${feeCents > 0 ? row('Entry', `CA$${(feeCents / 100).toFixed(2)}`) : ''}
+    </table>
+    <p style="margin:0;font-size:13px;color:rgba(242,242,247,0.38);line-height:1.75;font-family:'Courier New',Courier,monospace;letter-spacing:0.2px;">
+      We look forward to seeing you. Check the app for event details.
+    </p>
+  `;
+  await resend.emails.send({
+    from: FROM, to, replyTo: REPLY_TO,
+    subject: `You're in — ${popupName}`,
+    html: baseTemplate(content, 'RSVP confirmed.'),
+  });
+}

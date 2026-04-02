@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, Image,
+  View, Text, TouchableOpacity, ScrollView, Image, RefreshControl,
   StyleSheet, ActivityIndicator, Linking, Platform, Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -41,6 +41,7 @@ export default function PartnerDetailPanel() {
   } | null>(null);
   const [isVerified, setIsVerified] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [placedHistory, setPlacedHistory] = useState<any[]>([]);
   const [tipping, setTipping] = useState(false);
   const [tipAmount, setTipAmount] = useState<number | null>(null);
@@ -51,7 +52,7 @@ export default function PartnerDetailPanel() {
     AsyncStorage.getItem('verified').then(v => setIsVerified(v === 'true')).catch(() => {});
   }, []);
 
-  useEffect(() => {
+  const loadData = (isRefresh = false) => {
     if (!biz) { setLoading(false); return; }
     Promise.all([
       fetchBusinessPortraits(biz.id).catch(() => []),
@@ -63,8 +64,15 @@ export default function PartnerDetailPanel() {
       setVisitCount(v ? (v as any).visit_count : null);
       setPopupStats(s as any);
       setPlacedHistory(h as any[]);
-    }).finally(() => setLoading(false));
-  }, [biz?.id]);
+    }).finally(() => { setLoading(false); if (isRefresh) setRefreshing(false); });
+  };
+
+  useEffect(() => { loadData(); }, [biz?.id]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData(true);
+  };
 
   const handleInstagram = (handle: string) => {
     Linking.openURL(`https://instagram.com/${handle.replace('@', '')}`);
@@ -168,7 +176,7 @@ export default function PartnerDetailPanel() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}>
 
         {/* Currently placed user */}
         {biz.placed_user_name && (

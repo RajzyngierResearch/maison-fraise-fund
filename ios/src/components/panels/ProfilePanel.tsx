@@ -12,7 +12,7 @@ import {
   cancelStandingOrder, fetchOrdersByEmail,
   fetchUserPopupRsvps, fetchDjGigs, fetchDjAllocations, registerAsDj,
   fetchHostedPopups, fetchActiveContract, fetchFollowerCount, logMemberVisit,
-  fetchLegitimacyBreakdown, updateDisplayName,
+  fetchLegitimacyBreakdown, updateDisplayName, cancelPopupRsvp,
 } from '../../lib/api';
 import { CHOCOLATES, FINISHES } from '../../data/seed';
 import { useColors, fonts } from '../../theme';
@@ -43,6 +43,8 @@ export default function ProfilePanel() {
   const [loggingVisit, setLoggingVisit] = useState(false);
   const [legitimacy, setLegitimacy] = useState<{ total: number; breakdown: { event_type: string; total: number; count: number }[] } | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [cancellingRsvp, setCancellingRsvp] = useState<number | null>(null);
+  const [togglingOrder, setTogglingOrder] = useState<number | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -182,6 +184,35 @@ export default function ProfilePanel() {
       setStandingOrders(prev => prev.map(o => o.id === id ? { ...o, status: next } : o));
     } catch {
       Alert.alert('Could not update', 'Try again.');
+    }
+  };
+
+  const handleCancelRsvp = (popupId: number) => {
+    Alert.alert('Cancel RSVP', 'Are you sure? Paid RSVPs will be refunded.', [
+      { text: 'Keep it', style: 'cancel' },
+      { text: 'Cancel RSVP', style: 'destructive', onPress: async () => {
+        if (!userDbId) return;
+        setCancellingRsvp(popupId);
+        try {
+          await cancelPopupRsvp(popupId, userDbId);
+          setUpcomingPopups(prev => prev.filter(r => r.popup_id !== popupId));
+        } catch (e: any) {
+          Alert.alert('Error', e.message);
+        } finally {
+          setCancellingRsvp(null);
+        }
+      }},
+    ]);
+  };
+
+  const handleToggleOrder = async (id: number, currentStatus: string) => {
+    setTogglingOrder(id);
+    try {
+      const newStatus = currentStatus === 'active' ? 'paused' : 'active';
+      await updateStandingOrder(id, newStatus);
+      setStandingOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+    } catch {} finally {
+      setTogglingOrder(null);
     }
   };
 
@@ -493,6 +524,15 @@ export default function ProfilePanel() {
                       </Text>
                     </View>
                     <Text style={[styles.popupRsvpCount, { color: c.muted }]}>{p.rsvp_count} going</Text>
+                    {(p.status === 'paid' || p.status === 'pending') && (
+                      <TouchableOpacity
+                        onPress={() => handleCancelRsvp(p.popup_id)}
+                        disabled={cancellingRsvp === p.popup_id}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.rowMeta, { color: '#C0392B', opacity: cancellingRsvp === p.popup_id ? 0.5 : 1 }]}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ))}
               </View>

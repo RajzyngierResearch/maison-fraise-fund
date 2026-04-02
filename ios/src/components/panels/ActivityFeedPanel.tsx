@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StyleSheet, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePanel } from '../../context/PanelContext';
 import { fetchActivityFeed } from '../../lib/api';
@@ -23,16 +23,24 @@ export default function ActivityFeedPanel() {
   const c = useColors();
   const [feed, setFeed] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadFeed = (isRefresh = false) => {
     AsyncStorage.getItem('user_db_id').then(id => {
       if (!id) { setLoading(false); return; }
       fetchActivityFeed(parseInt(id))
         .then(setFeed)
         .catch(() => {})
-        .finally(() => setLoading(false));
+        .finally(() => { setLoading(false); if (isRefresh) setRefreshing(false); });
     });
-  }, []);
+  };
+
+  useEffect(() => { loadFeed(); }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadFeed(true);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg }]}>
@@ -43,7 +51,7 @@ export default function ActivityFeedPanel() {
         <Text style={[styles.title, { color: c.text }]}>Activity</Text>
         <View style={styles.headerSpacer} />
       </View>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}>
         {loading ? (
           <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
         ) : feed.length === 0 ? (

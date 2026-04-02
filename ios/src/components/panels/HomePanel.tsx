@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StyleSheet, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { usePanel, Variety } from '../../context/PanelContext';
 import { fetchVarieties } from '../../lib/api';
@@ -23,6 +23,7 @@ export default function HomePanel() {
   const c = useColors();
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const isCollapsed = sheetHeight < 110;
   const hasFetched = useRef(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -76,6 +77,13 @@ export default function HomePanel() {
   };
 
   useEffect(() => { loadVarieties(); }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    hasFetched.current = false;
+    loadVarieties();
+    setRefreshing(false);
+  };
 
   const handleLocationToggle = (biz: any) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -152,7 +160,7 @@ export default function HomePanel() {
       </View>
 
       {!isCollapsed && (
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.list} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}>
           {locations.length === 0 && (
             <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
           )}

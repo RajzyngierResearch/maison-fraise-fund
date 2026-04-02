@@ -7,6 +7,7 @@ import {
 } from '../db/schema';
 import { stripe } from '../lib/stripe';
 import { sendPushNotification } from '../lib/push';
+import { sendNominationReceived } from '../lib/resend';
 import { logger } from '../lib/logger';
 
 const router = Router();
@@ -100,6 +101,38 @@ router.post('/:id/rsvp', async (req: Request, res: Response) => {
     res.status(201).json({ id: rsvp.id, client_secret: clientSecret ?? '' });
   } catch (err) {
     logger.error('RSVP creation error', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/popups/:id/rsvp — cancel an RSVP (body: { user_id: number })
+router.delete('/:id/rsvp', async (req: Request, res: Response) => {
+  const popup_id = parseInt(req.params.id, 10);
+  const { user_id } = req.body;
+  if (isNaN(popup_id) || !user_id) {
+    res.status(400).json({ error: 'popup_id and user_id are required' });
+    return;
+  }
+  try {
+    const [rsvp] = await db
+      .select()
+      .from(popupRsvps)
+      .where(and(eq(popupRsvps.popup_id, popup_id), eq(popupRsvps.user_id, user_id), ne(popupRsvps.status, 'cancelled')));
+    if (!rsvp) {
+      res.status(404).json({ error: 'RSVP not found' });
+      return;
+    }
+    // Refund if paid
+    if (rsvp.status === 'paid' && rsvp.stripe_payment_intent_id) {
+      try {
+        await stripe.refunds.create({ payment_intent: rsvp.stripe_payment_intent_id });
+      } catch (refundErr) {
+        logger.error('Refund failed', refundErr);
+      }
+    }
+    await db.update(popupRsvps).set({ status: 'cancelled' }).where(eq(popupRsvps.id, rsvp.id));
+    res.json({ success: true, refunded: rsvp.status === 'paid' });
+  } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -279,21 +312,37 @@ router.post('/:id/nominations', async (req: Request, res: Response) => {
       return;
     }
 
+    // Look up popup, nominee, and nominator for notifications
+    const [[popup], [nominee], [nominator]] = await Promise.all([
+      db.select().from(businesses).where(eq(businesses.id, popup_id)),
+      db.select({ push_token: users.push_token, display_name: users.display_name, email: users.email }).from(users).where(eq(users.id, nominee_id)),
+      db.select({ display_name: users.display_name, email: users.email }).from(users).where(eq(users.id, nominator_id)),
+    ]);
+
     await db.insert(popupNominations).values({ popup_id, nominator_id, nominee_id });
 
-    // Notify nominee (fire-and-forget)
-    db.select({ push_token: users.push_token, display_name: users.display_name, email: users.email })
-      .from(users).where(eq(users.id, nominee_id))
-      .then(([user]) => {
-        if (user?.push_token) {
-          const name = user.display_name ?? user.email.split('@')[0];
-          sendPushNotification(user.push_token, {
-            title: 'Maison Fraise',
-            body: `You've been nominated at tonight's popup, ${name}.`,
-            data: { screen: 'nominate', popup_id },
-          }).catch(() => {});
-        }
+    // Notify nominee via push (fire-and-forget)
+    if (nominee?.push_token) {
+      const name = nominee.display_name ?? nominee.email.split('@')[0];
+      sendPushNotification(nominee.push_token, {
+        title: 'Maison Fraise',
+        body: `You've been nominated at tonight's popup, ${name}.`,
+        data: { screen: 'nominate', popup_id },
       }).catch(() => {});
+    }
+
+    // Notify nominee via email (fire-and-forget)
+    if (nominee?.email && popup) {
+      const popupDateStr = popup.starts_at
+        ? new Date(popup.starts_at).toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })
+        : null;
+      sendNominationReceived({
+        to: nominee.email,
+        nominatorName: nominator?.display_name ?? nominator?.email?.split('@')[0] ?? 'Someone',
+        popupName: popup.name,
+        popupDate: popupDateStr,
+      }).catch(() => {});
+    }
 
     res.status(201).json({ success: true });
   } catch (err) {

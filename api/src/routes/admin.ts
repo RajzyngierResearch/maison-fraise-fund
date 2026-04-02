@@ -3,7 +3,7 @@ import { eq, isNull, sql, and, lte, sum, gte, desc, inArray } from 'drizzle-orm'
 import { db } from '../db';
 import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits } from '../db/schema';
 import { logger } from '../lib/logger';
-import { sendOrderReady } from '../lib/resend';
+import { sendOrderReady, sendContractOffer } from '../lib/resend';
 import { sendPushNotification } from '../lib/push';
 import { randomUUID } from 'crypto';
 
@@ -758,6 +758,16 @@ router.post('/contracts', async (req: Request, res: Response) => {
       }).catch(() => {});
     }
 
+    if (user?.email) {
+      sendContractOffer({
+        to: user.email,
+        businessName: business.name,
+        neighbourhood: business.neighbourhood ?? null,
+        startsAt: new Date(starts_at),
+        endsAt: new Date(ends_at),
+      }).catch(() => {});
+    }
+
     res.status(201).json(contract);
   } catch (err) {
     logger.error('Contract create error', err);
@@ -994,6 +1004,31 @@ router.delete('/time-slots/:id', async (req: Request, res: Response) => {
   try {
     await db.delete(timeSlots).where(eq(timeSlots.id, id));
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/admin/contracts/complete-expired — mark contracts completed where ends_at < now
+router.post('/contracts/complete-expired', async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const expired = await db
+      .select({ id: employmentContracts.id })
+      .from(employmentContracts)
+      .where(and(eq(employmentContracts.status, 'active'), lte(employmentContracts.ends_at, now)));
+
+    if (expired.length === 0) {
+      res.json({ completed: 0 });
+      return;
+    }
+
+    const ids = expired.map(r => r.id);
+    await db.update(employmentContracts)
+      .set({ status: 'completed' })
+      .where(inArray(employmentContracts.id, ids));
+
+    res.json({ completed: ids.length });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StyleSheet, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePanel } from '../../context/PanelContext';
 import { fetchNotifications, markNotificationRead } from '../../lib/api';
@@ -17,16 +17,24 @@ export default function NotificationInboxPanel() {
   const c = useColors();
   const [notes, setNotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadNotes = (isRefresh = false) => {
     AsyncStorage.getItem('user_db_id').then(id => {
       if (!id) { setLoading(false); return; }
       fetchNotifications(parseInt(id))
         .then(setNotes)
         .catch(() => {})
-        .finally(() => setLoading(false));
+        .finally(() => { setLoading(false); if (isRefresh) setRefreshing(false); });
     });
-  }, []);
+  };
+
+  useEffect(() => { loadNotes(); }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadNotes(true);
+  };
 
   const handlePress = async (n: any) => {
     if (!n.read) {
@@ -44,7 +52,7 @@ export default function NotificationInboxPanel() {
         <Text style={[styles.title, { color: c.text }]}>Notifications</Text>
         <View style={styles.headerSpacer} />
       </View>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}>
         {loading ? (
           <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
         ) : notes.length === 0 ? (

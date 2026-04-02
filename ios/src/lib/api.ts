@@ -600,3 +600,16 @@ export async function fetchNominationsReceived(userId: number) {
   if (!res.ok) throw new Error('Failed to fetch nominations received');
   return res.json() as Promise<{ id: number; popup_name: string; popup_starts_at: string | null; nominator_id: number; nominator_name: string; created_at: string }[]>;
 }
+
+export async function cancelPopupRsvp(popupId: number, userId: number) {
+  const res = await fetch(`${BASE_URL}/api/popups/${popupId}/rsvp`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error ?? 'Failed to cancel RSVP');
+  }
+  return res.json() as Promise<{ success: boolean; refunded: boolean }>;
+}
