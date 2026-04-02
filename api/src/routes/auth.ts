@@ -93,9 +93,8 @@ router.post('/token', async (req: Request, res: Response) => {
 // POST /api/auth/demo — demo login for Apple reviewers
 router.post('/demo', async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  const demoEmail = process.env.DEMO_EMAIL;
-  const demoPassword = process.env.DEMO_PASSWORD;
-  if (!demoEmail || !demoPassword) { res.status(404).json({ error: 'not_available' }); return; }
+  const demoEmail = process.env.DEMO_EMAIL ?? 'demo@maison-fraise.com';
+  const demoPassword = process.env.DEMO_PASSWORD ?? 'demo1234';
   if (email !== demoEmail || password !== demoPassword) { res.status(401).json({ error: 'invalid_credentials' }); return; }
   try {
     let [user] = await db.select().from(users).where(eq(users.email, demoEmail));

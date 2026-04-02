@@ -153,7 +153,7 @@ export default function App() {
   return (
     <AppContext.Provider value={{ reviewMode, enableReviewMode: handleEnableReviewMode, pushToken, pendingScreen, pendingData, clearPendingScreen: () => { setPendingScreen(null); setPendingData(null); } }}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
-      <StripeProvider key={reviewMode ? 'test' : 'live'} publishableKey={publishableKey} merchantIdentifier="merchant.com.maisonfraise.app">
+      <StripeProvider key={reviewMode ? 'test' : 'live'} publishableKey={publishableKey} merchantIdentifier="merchant.maison.fraise">
         <SafeAreaProvider>
           <RootNavigator />
         </SafeAreaProvider>

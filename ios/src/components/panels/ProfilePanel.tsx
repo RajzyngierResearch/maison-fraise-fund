@@ -416,16 +416,18 @@ export default function ProfilePanel() {
               <Text style={[styles.headerEmail, { color: c.text }]}>{userEmail}</Text>
               {isVerified && <Text style={[styles.headerVerified, { color: c.accent }]}>Verified member</Text>}
             </>
-          ) : !loading && appleAvailable ? (
+          ) : !loading ? (
             signingIn ? <ActivityIndicator color={c.accent} /> : (
               <View style={styles.signInStack}>
-                <AppleAuthentication.AppleAuthenticationButton
-                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                  cornerRadius={14}
-                  style={styles.appleBtn}
-                  onPress={handleAppleSignIn}
-                />
+                {appleAvailable && (
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                    cornerRadius={14}
+                    style={styles.appleBtn}
+                    onPress={handleAppleSignIn}
+                  />
+                )}
                 <TouchableOpacity onPress={handleDemoLogin} activeOpacity={0.6} style={styles.demoBtn}>
                   <Text style={[styles.demoBtnText, { color: c.muted }]}>Use demo account</Text>
                 </TouchableOpacity>
