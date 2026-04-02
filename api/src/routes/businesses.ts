@@ -33,6 +33,7 @@ router.get('/', async (_req: Request, res: Response) => {
       placed_user_name: placedByBiz.get(b.id) ?? null,
     })));
   } catch (err) {
+    console.error('[businesses] GET / error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
