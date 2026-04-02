@@ -131,6 +131,53 @@ router.delete('/:id/rsvp', async (req: Request, res: Response) => {
       }
     }
     await db.update(popupRsvps).set({ status: 'cancelled' }).where(eq(popupRsvps.id, rsvp.id));
+
+    // Promote first waitlisted user if this was a paid RSVP
+    if (rsvp.status === 'paid') {
+      try {
+        const [nextWaitlisted] = await db
+          .select()
+          .from(popupRsvps)
+          .where(and(eq(popupRsvps.popup_id, popup_id), eq(popupRsvps.status, 'waitlist')))
+          .orderBy(popupRsvps.created_at)
+          .limit(1);
+
+        if (nextWaitlisted) {
+          // Promote to pending (they need to pay if there's a fee)
+          const [popup] = await db.select().from(businesses).where(eq(businesses.id, popup_id));
+          const fee = popup?.entrance_fee_cents ?? 0;
+
+          if (fee > 0) {
+            // Create a new payment intent for them
+            const pi = await stripe.paymentIntents.create({
+              amount: fee,
+              currency: 'cad',
+              metadata: { type: 'popup_rsvp', popup_id: String(popup_id), user_id: String(nextWaitlisted.user_id) },
+            });
+            await db.update(popupRsvps)
+              .set({ status: 'pending', stripe_payment_intent_id: pi.id })
+              .where(eq(popupRsvps.id, nextWaitlisted.id));
+          } else {
+            await db.update(popupRsvps)
+              .set({ status: 'paid' })
+              .where(eq(popupRsvps.id, nextWaitlisted.id));
+          }
+
+          // Notify the promoted user
+          const [promotedUser] = await db.select().from(users).where(eq(users.id, nextWaitlisted.user_id));
+          if (promotedUser?.push_token) {
+            sendPushNotification(promotedUser.push_token, {
+              title: 'A spot just opened up.',
+              body: `You're off the waitlist for ${popup?.name ?? 'the popup'}. ${fee > 0 ? 'Open the app to complete your RSVP.' : 'You\'re confirmed!'}`,
+              data: { screen: 'popup-detail', popup_id },
+            }).catch(() => {});
+          }
+        }
+      } catch (promoteErr) {
+        logger.error('Waitlist promotion failed', promoteErr);
+      }
+    }
+
     res.json({ success: true, refunded: rsvp.status === 'paid' });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

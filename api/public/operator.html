@@ -433,6 +433,7 @@
         <div class="form-row"><div class="form-label">Host User ID</div><input class="form-input" id="pf-host" type="number" placeholder="User DB ID" /></div>
         <div class="form-row"><div class="form-label">DJ Name (optional)</div><input class="form-input" id="pf-dj" placeholder="Leave blank if using DJ offer" /></div>
         <div class="form-row"><div class="form-label">Organizer Note</div><textarea class="form-textarea" id="pf-note" placeholder="Visible to invited DJ and guests"></textarea></div>
+        <div class="form-row"><div class="form-label">Hours</div><input class="form-input" id="pf-hours" placeholder="09:00–18:00, Mon–Sat" /></div>
         <div class="form-row"><div class="form-label">Description</div><textarea class="form-textarea" id="pf-desc" placeholder="Partner venue description (shown in partner panel)"></textarea></div>
         <label class="form-check"><input type="checkbox" id="pf-audition" /><span>Mark as audition popup</span></label>
         <button class="action-btn primary" onclick="createPopup()" style="align-self:flex-start;padding:12px 28px;">Create Popup</button>
@@ -465,6 +466,7 @@
           <div class="popup-name">${p.name}</div>
           <div class="popup-meta">${fmt(p.starts_at)} → ${fmt(p.ends_at)}</div>
           <div class="popup-meta">${p.address}${p.neighbourhood ? ' · ' + p.neighbourhood : ''}</div>
+          ${p.hours ? `<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-top:4px;">⏱ ${p.hours}</div>` : ''}
         </div>
         ${auditionBadge}
       </div>
@@ -562,6 +564,7 @@
       host_user_id: parseInt(document.getElementById('pf-host').value) || null,
       dj_name: document.getElementById('pf-dj').value.trim() || null,
       organizer_note: document.getElementById('pf-note').value.trim() || null,
+      hours: document.getElementById('pf-hours').value.trim() || null,
       description: document.getElementById('pf-desc').value.trim() || null,
       is_audition: document.getElementById('pf-audition').checked,
       audition_status: document.getElementById('pf-audition').checked ? 'pending' : null,
@@ -686,8 +689,42 @@
           <div class="portrait-meta">${p.subject_name || '—'} · ${p.season || '—'}</div>
           <div class="portrait-url">${p.image_url}</div>
         </div>
+        <button class="action-btn" onclick="movePortrait(${p.id},'up')" style="padding:6px 10px;">↑</button>
+        <button class="action-btn" onclick="movePortrait(${p.id},'down')" style="padding:6px 10px;">↓</button>
         <button class="action-btn danger" onclick="deletePortrait(${p.id})">Remove</button>
       </div>`).join('')}</div>`;
+  }
+
+  async function movePortrait(id, direction) {
+    // Get current portraits for this business
+    const business_id = parseInt(document.getElementById('port-view-biz').value);
+    const res = await fetch(`${BASE}/api/admin/portraits?business_id=${business_id}`, { headers: { 'X-Admin-PIN': currentPin } });
+    const portraits = res.ok ? await res.json() : [];
+    portraits.sort((a, b) => a.sort_order - b.sort_order);
+
+    const idx = portraits.findIndex(p => p.id === id);
+    if (idx === -1) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= portraits.length) return;
+
+    // Swap sort_orders
+    const a = portraits[idx];
+    const b = portraits[swapIdx];
+
+    await Promise.all([
+      fetch(`${BASE}/api/admin/portraits/${a.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+        body: JSON.stringify({ sort_order: b.sort_order }),
+      }),
+      fetch(`${BASE}/api/admin/portraits/${b.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
+        body: JSON.stringify({ sort_order: a.sort_order }),
+      }),
+    ]);
+
+    loadPortraits();
   }
 
   async function deletePortrait(id) {
@@ -1065,6 +1102,9 @@
               <div>
                 <div style="font-family:'Playfair Display',serif;font-size:16px;">${v.name}</div>
                 <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);">CA$${(v.price_cents/100).toFixed(2)} · stock: ${v.stock_remaining}</div>
+                <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);">
+                  ${v.location_id ? `@ ${locations.find(l => l.id === v.location_id)?.name ?? 'Unknown'}` : 'All locations'}
+                </div>
               </div>
               <span data-active style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;color:${v.active?'rgba(80,200,120,0.9)':'#E05A5A'}">${v.active?'ACTIVE':'INACTIVE'}</span>
             </div>

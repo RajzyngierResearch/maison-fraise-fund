@@ -226,6 +226,27 @@ export async function sendNominationReceived(params: {
   });
 }
 
+export async function sendAuditionResult(params: {
+  to: string;
+  popupName: string;
+  passed: boolean;
+}) {
+  const { to, popupName, passed } = params;
+  const content = `
+    <p style="margin:0 0 24px;font-size:16px;color:rgba(242,242,247,0.65);line-height:1.75;font-family:Georgia,'Times New Roman',serif;">
+      ${passed
+        ? `<strong style="color:#F2F2F7;">${popupName}</strong> has been approved. You can now start inviting guests through the app.`
+        : `<strong style="color:#F2F2F7;">${popupName}</strong> wasn't approved for this cycle. We'll be in touch if something changes.`
+      }
+    </p>
+  `;
+  await resend.emails.send({
+    from: FROM, to, replyTo: REPLY_TO,
+    subject: passed ? `${popupName} — approved.` : `${popupName} — not approved.`,
+    html: baseTemplate(content, passed ? 'Your popup passed.' : 'Audition result.'),
+  });
+}
+
 export async function sendRsvpConfirmed(params: {
   to: string;
   popupName: string;

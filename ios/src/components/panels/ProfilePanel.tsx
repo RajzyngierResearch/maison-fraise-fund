@@ -628,6 +628,12 @@ export default function ProfilePanel() {
                   <View key={so.id} style={[styles.standingRow, { backgroundColor: c.card, borderColor: c.border }]}>
                     <View style={styles.standingInfo}>
                       <Text style={[styles.rowName, { color: c.text }]}>{so.variety_name ?? '—'}</Text>
+                      {so.recipient_id === userDbId && (
+                        <Text style={[styles.rowMeta, { color: c.accent }]}>🎁 Gift to you</Text>
+                      )}
+                      {so.recipient_id !== null && so.recipient_id !== undefined && so.recipient_id !== userDbId && (
+                        <Text style={[styles.rowMeta, { color: c.muted }]}>Gift order</Text>
+                      )}
                       <Text style={[styles.rowMeta, { color: c.muted }]}>{so.frequency} · {so.status}</Text>
                     </View>
                     <View style={styles.standingActions}>

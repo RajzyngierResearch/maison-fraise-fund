@@ -3,7 +3,7 @@ import { eq, isNull, sql, and, lte, sum, gte, desc, inArray } from 'drizzle-orm'
 import { db } from '../db';
 import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits } from '../db/schema';
 import { logger } from '../lib/logger';
-import { sendOrderReady, sendContractOffer } from '../lib/resend';
+import { sendOrderReady, sendContractOffer, sendAuditionResult } from '../lib/resend';
 import { sendPushNotification } from '../lib/push';
 import { randomUUID } from 'crypto';
 
@@ -354,6 +354,36 @@ router.patch('/businesses/:id', async (req: Request, res: Response) => {
     if (body.ends_at) body.ends_at = new Date(body.ends_at);
     const [updated] = await db.update(businesses).set(body).where(eq(businesses.id, id)).returning();
     if (!updated) { res.status(404).json({ error: 'Not found' }); return; }
+
+    // Notify host user of audition result
+    if (req.body.audition_status === 'passed' || req.body.audition_status === 'failed') {
+      try {
+        const [biz] = await db.select().from(businesses).where(eq(businesses.id, id));
+        if (biz?.host_user_id) {
+          const [host] = await db.select().from(users).where(eq(users.id, biz.host_user_id));
+          if (host?.push_token) {
+            const passed = req.body.audition_status === 'passed';
+            sendPushNotification(host.push_token, {
+              title: passed ? 'Your popup passed.' : 'Audition result.',
+              body: passed
+                ? `${biz.name} has been approved. Start inviting guests.`
+                : `${biz.name} wasn't approved this time.`,
+              data: { screen: 'home' },
+            }).catch(() => {});
+          }
+          if (host?.email) {
+            const biz2 = biz;
+            const passed = req.body.audition_status === 'passed';
+            sendAuditionResult({
+              to: host.email,
+              popupName: biz2.name,
+              passed,
+            }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
+
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -536,6 +566,26 @@ router.post('/portraits', async (req: Request, res: Response) => {
       sort_order: sort_order ?? 0,
     }).returning();
     res.status(201).json(portrait);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/portraits/:id — update sort_order or other fields
+router.patch('/portraits/:id', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+  const { sort_order, subject_name, season, campaign_title } = req.body;
+  const body: any = {};
+  if (sort_order !== undefined) body.sort_order = sort_order;
+  if (subject_name !== undefined) body.subject_name = subject_name;
+  if (season !== undefined) body.season = season;
+  if (campaign_title !== undefined) body.campaign_title = campaign_title;
+  if (Object.keys(body).length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+  try {
+    const [updated] = await db.update(portraits).set(body).where(eq(portraits.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

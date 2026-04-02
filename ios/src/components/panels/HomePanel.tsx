@@ -11,6 +11,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+function formatHarvestDate(iso: string): string {
+  const d = new Date(iso);
+  const months = ['jan','fév','mar','avr','mai','juin','juil','août','sep','oct','nov','déc'];
+  return `${d.getDate()} ${months[d.getMonth()]}`;
+}
+
 function freshnessLabel(level?: number): string {
   if (!level) return 'Last chance';
   if (level >= 0.8) return '旬';
@@ -68,7 +74,7 @@ export default function HomePanel() {
       .then((vars: any[]) => {
         const merged = vars.map((v: any) => {
           const seed = STRAWBERRIES.find(s => s.name === v.name);
-          return { ...(seed ?? {}), ...v };
+          return { ...(seed ?? {}), ...v, harvestDate: v.harvest_date ?? seed?.harvestDate };
         });
         setVarieties(merged);
       })
@@ -137,6 +143,11 @@ export default function HomePanel() {
               <View style={[styles.freshDot, { backgroundColor: freshColor }]} />
               <Text style={[styles.freshLabel, { color: freshColor }]}>{label}</Text>
             </View>
+            {!!v.harvestDate && (
+              <Text style={[styles.harvestDate, { color: c.muted }]}>
+                Récolte {formatHarvestDate(v.harvestDate)}
+              </Text>
+            )}
           </View>
           <View style={styles.rowRight}>
             <Text style={[styles.price, { color: c.text }]}>CA${(v.price_cents / 100).toFixed(2)}</Text>
@@ -274,4 +285,5 @@ const styles = StyleSheet.create({
   stock: { fontSize: 11, fontFamily: fonts.dmSans },
   emptyText: { fontSize: 15, fontFamily: fonts.dmSans, textAlign: 'center', fontStyle: 'italic' },
   varietyDesc: { fontSize: 11, fontFamily: fonts.dmSans, lineHeight: 16, fontStyle: 'italic' },
+  harvestDate: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 0.5, fontStyle: 'italic' },
 });

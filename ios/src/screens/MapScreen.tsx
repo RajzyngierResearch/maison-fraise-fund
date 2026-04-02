@@ -7,6 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { usePanel } from '../context/PanelContext';
 import PanelNavigator from '../components/PanelNavigator';
+import OfflineBanner from '../components/OfflineBanner';
+import PanelErrorBoundary from '../components/PanelErrorBoundary';
 import { fetchBusinesses, updatePushToken } from '../lib/api';
 import { useColors, fonts, SPACING } from '../theme';
 import { useApp } from '../../App';
@@ -353,6 +355,7 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
+      <OfflineBanner />
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -503,7 +506,9 @@ export default function MapScreen() {
         scrollable
       >
         <View style={{ height: contentHeight }} onLayout={onSheetLayout}>
-          <PanelNavigator />
+          <PanelErrorBoundary onReset={() => goHome()}>
+            <PanelNavigator />
+          </PanelErrorBoundary>
         </View>
       </TrueSheet>
 
