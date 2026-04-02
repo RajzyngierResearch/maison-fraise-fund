@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { eq, isNull, sql, and, lte, sum, gte, desc, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
-import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships } from '../db/schema';
+import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist } from '../db/schema';
 import { logger } from '../lib/logger';
 import { sendOrderReady, sendContractOffer, sendAuditionResult } from '../lib/resend';
 import { sendPushNotification } from '../lib/push';
@@ -859,9 +859,12 @@ router.post('/migrate', async (_req: Request, res: Response) => {
     `);
 
     await db.execute(sql`CREATE TABLE IF NOT EXISTS memberships (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), tier membership_tier NOT NULL, status TEXT NOT NULL DEFAULT 'pending', started_at TIMESTAMP, renews_at TIMESTAMP, amount_cents INTEGER NOT NULL, stripe_payment_intent_id TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW())`);
+    await db.execute(sql`ALTER TABLE memberships ADD COLUMN IF NOT EXISTS renewal_notified_at TIMESTAMP`);
     await db.execute(sql`CREATE TABLE IF NOT EXISTS membership_funds (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) UNIQUE, balance_cents INTEGER NOT NULL DEFAULT 0, cycle_start TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW())`);
     await db.execute(sql`CREATE TABLE IF NOT EXISTS fund_contributions (id SERIAL PRIMARY KEY, from_user_id INTEGER REFERENCES users(id), to_user_id INTEGER NOT NULL REFERENCES users(id), amount_cents INTEGER NOT NULL, stripe_payment_intent_id TEXT, note TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW())`);
     await db.execute(sql`CREATE TABLE IF NOT EXISTS editorial_pieces (id SERIAL PRIMARY KEY, author_user_id INTEGER NOT NULL REFERENCES users(id), title TEXT NOT NULL, body TEXT NOT NULL, status editorial_status NOT NULL DEFAULT 'draft', commission_cents INTEGER, published_at TIMESTAMP, editor_note TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW(), updated_at TIMESTAMP NOT NULL DEFAULT NOW())`);
+    await db.execute(sql`ALTER TABLE editorial_pieces ADD COLUMN IF NOT EXISTS tag TEXT`);
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS membership_waitlist (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), tier membership_tier NOT NULL, message TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW())`);
 
     res.json({ ok: true, message: 'Migration complete' });
   } catch (err) {
@@ -1439,7 +1442,7 @@ router.patch('/editorial/:id', async (req: Request, res: Response) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
 
-  const { status, commission_cents, editor_note } = req.body;
+  const { status, commission_cents, editor_note, tag } = req.body;
 
   try {
     // Fetch current piece + author
@@ -1459,6 +1462,7 @@ router.patch('/editorial/:id', async (req: Request, res: Response) => {
     if (status !== undefined) updates.status = status;
     if (commission_cents !== undefined) updates.commission_cents = commission_cents;
     if (editor_note !== undefined) updates.editor_note = editor_note;
+    if (tag !== undefined) updates.tag = tag;
     updates.updated_at = new Date();
 
     if (status === 'published') {
@@ -1533,6 +1537,27 @@ router.get('/memberships', async (_req: Request, res: Response) => {
       .innerJoin(users, eq(memberships.user_id, users.id))
       .leftJoin(membershipFunds, eq(memberships.user_id, membershipFunds.user_id))
       .orderBy(desc(memberships.tier), memberships.started_at);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/memberships/waitlist — all waitlist entries with user info
+router.get('/memberships/waitlist', async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: membershipWaitlist.id,
+        display_name: users.display_name,
+        email: users.email,
+        tier: membershipWaitlist.tier,
+        message: membershipWaitlist.message,
+        created_at: membershipWaitlist.created_at,
+      })
+      .from(membershipWaitlist)
+      .innerJoin(users, eq(membershipWaitlist.user_id, users.id))
+      .orderBy(membershipWaitlist.tier, membershipWaitlist.created_at);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

@@ -1,14 +1,25 @@
 import { Router, Request, Response } from 'express';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, ilike, or, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
 import { editorialPieces, memberships, users } from '../db/schema';
 import { requireUser } from '../lib/auth';
 
 const router = Router();
 
-// GET /api/editorial — all published pieces
-router.get('/', async (_req: Request, res: Response) => {
+// GET /api/editorial — all published pieces; optional ?q= search, ?tag= filter
+router.get('/', async (req: Request, res: Response) => {
   try {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : undefined;
+    const tag = typeof req.query.tag === 'string' ? req.query.tag.trim() : undefined;
+
+    const conditions = [eq(editorialPieces.status, 'published')];
+    if (q) {
+      conditions.push(or(ilike(editorialPieces.title, `%${q}%`), ilike(editorialPieces.body, `%${q}%`))!);
+    }
+    if (tag) {
+      conditions.push(eq(editorialPieces.tag, tag));
+    }
+
     const rows = await db
       .select({
         id: editorialPieces.id,
@@ -16,10 +27,11 @@ router.get('/', async (_req: Request, res: Response) => {
         author_display_name: users.display_name,
         published_at: editorialPieces.published_at,
         commission_cents: editorialPieces.commission_cents,
+        tag: editorialPieces.tag,
       })
       .from(editorialPieces)
       .leftJoin(users, eq(editorialPieces.author_user_id, users.id))
-      .where(eq(editorialPieces.status, 'published'))
+      .where(and(...conditions))
       .orderBy(desc(editorialPieces.published_at));
 
     res.json(rows);
@@ -61,6 +73,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         author_display_name: users.display_name,
         published_at: editorialPieces.published_at,
         commission_cents: editorialPieces.commission_cents,
+        tag: editorialPieces.tag,
         status: editorialPieces.status,
       })
       .from(editorialPieces)
@@ -82,7 +95,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/editorial — submit new piece (requireUser + active membership)
 router.post('/', requireUser, async (req: Request, res: Response) => {
   const userId: number = (req as any).userId;
-  const { title, body } = req.body;
+  const { title, body, tag } = req.body;
 
   if (!title || typeof title !== 'string' || title.length > 200) {
     res.status(400).json({ error: 'invalid_title', message: 'Title is required and must be 200 characters or fewer.' });
@@ -112,6 +125,7 @@ router.post('/', requireUser, async (req: Request, res: Response) => {
         title,
         body,
         status: 'submitted',
+        tag: tag !== undefined ? String(tag) : null,
       })
       .returning();
 
@@ -130,7 +144,7 @@ router.patch('/:id', requireUser, async (req: Request, res: Response) => {
     return;
   }
 
-  const { title, body } = req.body;
+  const { title, body, tag } = req.body;
 
   try {
     const [piece] = await db
@@ -152,7 +166,7 @@ router.patch('/:id', requireUser, async (req: Request, res: Response) => {
       return;
     }
 
-    const updates: Partial<{ title: string; body: string; updated_at: Date }> = { updated_at: new Date() };
+    const updates: Partial<{ title: string; body: string; tag: string | null; updated_at: Date }> = { updated_at: new Date() };
     if (title !== undefined) {
       if (typeof title !== 'string' || title.length > 200) {
         res.status(400).json({ error: 'invalid_title' });
@@ -166,6 +180,9 @@ router.patch('/:id', requireUser, async (req: Request, res: Response) => {
         return;
       }
       updates.body = body;
+    }
+    if (tag !== undefined) {
+      updates.tag = tag === null ? null : String(tag);
     }
 
     const [updated] = await db

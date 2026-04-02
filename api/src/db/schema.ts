@@ -389,6 +389,7 @@ export const memberships = pgTable('memberships', {
   renews_at: timestamp('renews_at'),
   amount_cents: integer('amount_cents').notNull(),
   stripe_payment_intent_id: text('stripe_payment_intent_id'),
+  renewal_notified_at: timestamp('renewal_notified_at'),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -423,6 +424,15 @@ export const editorialPieces = pgTable('editorial_pieces', {
   commission_cents: integer('commission_cents'),
   published_at: timestamp('published_at'),
   editor_note: text('editor_note'),
+  tag: text('tag'),
   created_at: timestamp('created_at').notNull().defaultNow(),
   updated_at: timestamp('updated_at').notNull().defaultNow(),
+});
+
+export const membershipWaitlist = pgTable('membership_waitlist', {
+  id: serial('id').primaryKey(),
+  user_id: integer('user_id').notNull().references(() => users.id),
+  tier: membershipTierEnum('tier').notNull(),
+  message: text('message'),
+  created_at: timestamp('created_at').notNull().defaultNow(),
 });

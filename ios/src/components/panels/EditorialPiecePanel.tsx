@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator,
+  StyleSheet, ActivityIndicator, Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePanel } from '../../context/PanelContext';
 import { fetchEditorialPiece } from '../../lib/api';
 import { useColors, fonts, SPACING } from '../../theme';
+
+const BASE_EDITORIAL_URL = 'https://maison-fraise-v2-production.up.railway.app/editorial';
 
 export default function EditorialPiecePanel() {
   const { goBack, panelData } = usePanel();
@@ -31,6 +33,16 @@ export default function EditorialPiecePanel() {
 
   const formatCents = (cents: number) => `CA$${(cents / 100).toFixed(2)}`;
 
+  const handleShare = () => {
+    if (!piece) return;
+    const url = `${BASE_EDITORIAL_URL}/${piece.id}`;
+    Share.share({
+      title: piece.title,
+      message: `${piece.title} — Maison Fraise\n${url}`,
+      url,
+    });
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg, paddingTop: insets.top }]}>
       <View style={[styles.header, { borderBottomColor: c.border }]}>
@@ -38,6 +50,11 @@ export default function EditorialPiecePanel() {
           <Text style={[styles.backBtnText, { color: c.accent }]}>←</Text>
         </TouchableOpacity>
         <View style={styles.headerSpacer} />
+        {piece && (
+          <TouchableOpacity onPress={handleShare} style={styles.shareBtn} activeOpacity={0.7}>
+            <Text style={[styles.shareBtnText, { color: c.accent, fontFamily: fonts.dmMono }]}>↑</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {loading ? (
@@ -94,6 +111,8 @@ const styles = StyleSheet.create({
   backBtn: { padding: SPACING.sm },
   backBtnText: { fontSize: 22 },
   headerSpacer: { flex: 1 },
+  shareBtn: { padding: SPACING.sm },
+  shareBtnText: { fontSize: 20 },
   body: { padding: SPACING.lg, paddingBottom: 60 },
   title: { fontSize: 24, lineHeight: 32, marginBottom: SPACING.sm },
   meta: { flexDirection: 'row', marginBottom: SPACING.md },

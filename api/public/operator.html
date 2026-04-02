@@ -1242,6 +1242,56 @@
   // ── EDITORIAL TAB ─────────────────────────────────────
   let allEditorial = [];
   let editorialFilter = 'all';
+  let editorialView = 'list'; // 'list' | 'calendar'
+
+  function renderEditorialCalendar(pieces) {
+    const today = new Date();
+    const days = [];
+    for (let i = 0; i < 28; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      days.push(d);
+    }
+    // Group pieces by date
+    const byDate = {};
+    pieces.forEach(p => {
+      const dateKey = p.status === 'published' && p.published_at
+        ? p.published_at.slice(0,10)
+        : p.status === 'commissioned'
+        ? p.created_at.slice(0,10)
+        : null;
+      if (dateKey) {
+        if (!byDate[dateKey]) byDate[dateKey] = [];
+        byDate[dateKey].push(p);
+      }
+    });
+    // Render 4 rows of 7
+    let html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:24px;">';
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d => {
+      html += `<div style="font-family:DM Mono,monospace;font-size:9px;color:#555;text-align:center;padding:4px 0;">${d}</div>`;
+    });
+    days.forEach(d => {
+      const key = d.toISOString().slice(0,10);
+      const items = byDate[key] || [];
+      const dots = items.map(p => `<span title="${p.title.replace(/"/g,'&quot;')}" style="display:inline-block;width:6px;height:6px;border-radius:3px;background:${p.status==='published'?'#34C759':'#f0a500'};margin:1px;cursor:pointer;"></span>`).join('');
+      const isToday = key === today.toISOString().slice(0,10);
+      html += `<div style="background:${isToday?'#1e1e1e':'#141414'};border-radius:4px;padding:6px 4px;min-height:44px;text-align:center;">
+        <div style="font-family:DM Mono,monospace;font-size:9px;color:${isToday?'#f5f5f5':'#555'}">${d.getDate()}</div>
+        <div style="margin-top:2px;">${dots}</div>
+      </div>`;
+    });
+    html += '</div>';
+    // Pipeline counts
+    const submitted = pieces.filter(p => p.status === 'submitted').length;
+    const commissioned = pieces.filter(p => p.status === 'commissioned').length;
+    const thisMonth = pieces.filter(p => p.status === 'published' && p.published_at?.slice(0,7) === today.toISOString().slice(0,7)).length;
+    html += `<div style="display:flex;gap:16px;margin-bottom:24px;">
+      <div class="order-card" style="flex:1;text-align:center"><div style="font-family:DM Mono,monospace;font-size:20px;color:#f0a500">${submitted}</div><div style="font-family:DM Mono,monospace;font-size:10px;color:#555;margin-top:4px">SUBMITTED</div></div>
+      <div class="order-card" style="flex:1;text-align:center"><div style="font-family:DM Mono,monospace;font-size:20px;color:#c5705d">${commissioned}</div><div style="font-family:DM Mono,monospace;font-size:10px;color:#555;margin-top:4px">COMMISSIONED</div></div>
+      <div class="order-card" style="flex:1;text-align:center"><div style="font-family:DM Mono,monospace;font-size:20px;color:#34C759">${thisMonth}</div><div style="font-family:DM Mono,monospace;font-size:10px;color:#555;margin-top:4px">PUBLISHED THIS MONTH</div></div>
+    </div>`;
+    return html;
+  }
 
   async function renderEditorialTab() {
     const body = document.getElementById('dash-body');
@@ -1287,13 +1337,29 @@
           </div>`;
         }).join('');
 
+    const viewToggle = `<div style="display:flex;gap:6px;flex-shrink:0;">
+      <div class="pill ${editorialView==='list'?'active':''}" onclick="setEditorialView('list')">List</div>
+      <div class="pill ${editorialView==='calendar'?'active':''}" onclick="setEditorialView('calendar')">Calendar</div>
+    </div>`;
+
+    const calendarHtml = editorialView === 'calendar' ? renderEditorialCalendar(allEditorial) : '';
+
     body.innerHTML = `
-      <div class="filter-row">${pills}</div>
-      ${cards}`;
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div class="filter-row" style="flex:1;">${pills}</div>
+        ${viewToggle}
+      </div>
+      ${calendarHtml}
+      ${editorialView === 'list' ? cards : ''}`;
   }
 
   function setEditorialFilter(f) {
     editorialFilter = f;
+    renderEditorialTab();
+  }
+
+  function setEditorialView(v) {
+    editorialView = v;
     renderEditorialTab();
   }
 
@@ -1307,6 +1373,9 @@
     const commissionDollars = p.commission_cents ? (p.commission_cents / 100).toFixed(2) : '0';
     const statusOptions = ['submitted', 'commissioned', 'published', 'declined'].map(s =>
       `<option value="${s}" ${p.status === s ? 'selected' : ''}>${s.charAt(0).toUpperCase() + s.slice(1)}</option>`
+    ).join('');
+    const tagOptions = ['', 'harvest', 'portrait', 'criticism', 'dispatch', 'essay'].map(t =>
+      `<option value="${t}" ${(p.tag || '') === t ? 'selected' : ''}>${t === '' ? '(none)' : t.charAt(0).toUpperCase() + t.slice(1)}</option>`
     ).join('');
 
     const modal = document.createElement('div');
@@ -1323,6 +1392,10 @@
           <div class="form-row">
             <div class="form-label">Status</div>
             <select class="form-select" id="ed-status-${id}">${statusOptions}</select>
+          </div>
+          <div class="form-row">
+            <div class="form-label">Tag</div>
+            <select class="form-select" id="ed-tag-${id}">${tagOptions}</select>
           </div>
           <div class="form-row">
             <div class="form-label">Commission (CA$)</div>
@@ -1352,12 +1425,14 @@
     const status = document.getElementById(`ed-status-${id}`).value;
     const commissionDollars = parseFloat(document.getElementById(`ed-commission-${id}`).value) || 0;
     const editorNote = document.getElementById(`ed-note-${id}`).value;
+    const tagEl = document.getElementById(`ed-tag-${id}`);
+    const tag = tagEl ? (tagEl.value || null) : null;
     const resultEl = document.getElementById(`ed-result-${id}`);
     if (resultEl) { resultEl.textContent = 'Saving…'; resultEl.style.color = 'var(--muted)'; }
     const res = await fetch(`/api/admin/editorial/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-Admin-PIN': currentPin },
-      body: JSON.stringify({ status, commission_cents: Math.round(commissionDollars * 100), editor_note: editorNote })
+      body: JSON.stringify({ status, commission_cents: Math.round(commissionDollars * 100), editor_note: editorNote, tag })
     });
     if (res.ok) {
       closeEditorialModal();
@@ -1420,7 +1495,29 @@
         </div>
       </div>
       <div class="section-label">All Members</div>
-      ${rows}`;
+      ${rows}
+      <div class="order-card" style="margin-top:16px"><div style="font-family:DM Mono,monospace;font-size:11px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px">Tier Waitlist</div><div id="waitlist-list"></div></div>`;
+
+    loadMembershipWaitlist();
+  }
+
+  async function loadMembershipWaitlist() {
+    const res = await fetch('/api/admin/memberships/waitlist', { headers: { 'X-Admin-PIN': currentPin } });
+    if (!res.ok) return;
+    const entries = await res.json();
+    const el = document.getElementById('waitlist-list');
+    if (!el) return;
+    if (entries.length === 0) { el.innerHTML = '<p style="color:#555;font-style:italic;font-family:DM Mono,monospace;font-size:12px">No waitlist entries.</p>'; return; }
+    el.innerHTML = entries.map(e => `
+      <div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid #1e1e1e;">
+        <span class="status-badge" style="background:rgba(155,89,182,0.15);color:#9B59B6;white-space:nowrap">${e.tier}</span>
+        <div style="flex:1">
+          <div style="font-family:DM Mono,monospace;font-size:12px;color:#f5f5f5">${e.display_name || e.email}</div>
+          ${e.message ? `<div style="font-family:DM Sans,sans-serif;font-size:11px;color:#666;margin-top:2px">${e.message.slice(0,100)}${e.message.length>100?'...':''}</div>` : ''}
+        </div>
+        <span style="font-family:DM Mono,monospace;font-size:10px;color:#555">${new Date(e.created_at).toLocaleDateString('en-CA')}</span>
+      </div>
+    `).join('');
   }
 
   // ── CHOCOLATIER ───────────────────────────────────────

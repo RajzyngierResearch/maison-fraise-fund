@@ -864,3 +864,36 @@ export async function fetchMyPieces(): Promise<any[]> {
   if (!r.ok) return [];
   return r.json();
 }
+
+export async function fetchEditorialFeedFiltered(q?: string, tag?: string): Promise<any[]> {
+  const params = new URLSearchParams();
+  if (q && q.length >= 2) params.set('q', q);
+  if (tag && tag !== 'all') params.set('tag', tag);
+  const r = await fetch(`${BASE_URL}/api/editorial?${params.toString()}`);
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function fetchFundHistory(): Promise<any[]> {
+  const headers = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/memberships/me/fund-history`, { headers });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function renewMembership(): Promise<{ client_secret: string; amount_cents: number }> {
+  const headers = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/memberships/renew`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+  });
+  if (!r.ok) throw new Error('renew_failed');
+  return r.json();
+}
+
+export async function joinMembershipWaitlist(tier: string, message?: string): Promise<void> {
+  const headers = await authHeader();
+  await fetch(`${BASE_URL}/api/memberships/waitlist`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ tier, message }),
+  });
+}

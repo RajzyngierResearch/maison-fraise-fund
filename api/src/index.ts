@@ -14,7 +14,7 @@ if (missing.length > 0) {
 }
 
 import cron from 'node-cron';
-import { and, eq, lte, gte, sql } from 'drizzle-orm';
+import { and, eq, lte, gte, sql, isNull } from 'drizzle-orm';
 import app from './app';
 import { db } from './db';
 import { employmentContracts, standingOrders, orders, varieties, popupRsvps, users, membershipFunds, memberships } from './db/schema';
@@ -160,6 +160,59 @@ cron.schedule('0 8 * * *', async () => {
     });
     console.log('[cron] Daily summary email sent');
   } catch (e) { console.error('[cron] Daily summary error', e); }
+});
+
+// Run every day at 09:00 — send membership renewal reminders for memberships expiring within 30 days
+cron.schedule('0 9 * * *', async () => {
+  try {
+    const now = new Date();
+    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const in29Days = new Date(now.getTime() + 29 * 24 * 60 * 60 * 1000);
+
+    // Find active memberships expiring between 29 and 30 days from now (send only once at this threshold)
+    const expiring = await db
+      .select({
+        id: memberships.id,
+        user_id: memberships.user_id,
+        renews_at: memberships.renews_at,
+        renewal_notified_at: memberships.renewal_notified_at,
+      })
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.status, 'active'),
+          lte(memberships.renews_at, in30Days),
+          gte(memberships.renews_at, in29Days),
+          isNull(memberships.renewal_notified_at),
+        ),
+      );
+
+    for (const m of expiring) {
+      try {
+        const [user] = await db
+          .select({ push_token: users.push_token })
+          .from(users)
+          .where(eq(users.id, m.user_id))
+          .limit(1);
+
+        if (user?.push_token && m.renews_at) {
+          const daysLeft = Math.ceil((new Date(m.renews_at).getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+          await sendPushNotification(user.push_token, {
+            title: 'Membership renewing soon',
+            body: `Your Maison Fraise membership renews in ${daysLeft} days. Tap to review.`,
+            data: { screen: 'membership' },
+          });
+        }
+
+        await db
+          .update(memberships)
+          .set({ renewal_notified_at: now })
+          .where(eq(memberships.id, m.id));
+      } catch (e) { logger.error(`[cron] renewal notify error for membership ${m.id}`, e); }
+    }
+
+    console.log(`[cron] Renewal reminders sent (${expiring.length})`);
+  } catch (e) { console.error('[cron] renewal reminder error', e); }
 });
 
 // Run January 1st at 00:01 — reset membership fund balances and expire memberships
