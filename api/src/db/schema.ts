@@ -145,6 +145,9 @@ export const users = pgTable('users', {
   stripe_customer_id: text('stripe_customer_id'),
   referred_by_code: text('referred_by_code'),
   notification_prefs: jsonb('notification_prefs').$type<{ order_updates: boolean; social: boolean; popup_updates: boolean; marketing: boolean } | null>().default(null),
+  portrait_url: text('portrait_url'),
+  worker_status: text('worker_status'),
+  portal_opted_in: boolean('portal_opted_in').notNull().default(false),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });
 
@@ -434,5 +437,41 @@ export const membershipWaitlist = pgTable('membership_waitlist', {
   user_id: integer('user_id').notNull().references(() => users.id),
   tier: membershipTierEnum('tier').notNull(),
   message: text('message'),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const nfcConnections = pgTable('nfc_connections', {
+  id: serial('id').primaryKey(),
+  user_a: integer('user_a').notNull().references(() => users.id),
+  user_b: integer('user_b').notNull().references(() => users.id),
+  location: text('location'),
+  confirmed_at: timestamp('confirmed_at').notNull().defaultNow(),
+});
+
+export const explicitPortals = pgTable('explicit_portals', {
+  id: serial('id').primaryKey(),
+  user_id: integer('user_id').notNull().references(() => users.id).unique(),
+  opted_in: boolean('opted_in').notNull().default(false),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const portalAccess = pgTable('portal_access', {
+  id: serial('id').primaryKey(),
+  buyer_id: integer('buyer_id').notNull().references(() => users.id),
+  owner_id: integer('owner_id').notNull().references(() => users.id),
+  amount_cents: integer('amount_cents').notNull(),
+  platform_cut_cents: integer('platform_cut_cents').notNull(),
+  source: text('source').notNull(), // 'tap' | 'receipt'
+  stripe_payment_intent_id: text('stripe_payment_intent_id'),
+  expires_at: timestamp('expires_at').notNull(),
+  created_at: timestamp('created_at').notNull().defaultNow(),
+});
+
+export const portalContent = pgTable('portal_content', {
+  id: serial('id').primaryKey(),
+  user_id: integer('user_id').notNull().references(() => users.id),
+  media_url: text('media_url').notNull(),
+  type: text('type').notNull(), // 'photo' | 'video'
+  caption: text('caption'),
   created_at: timestamp('created_at').notNull().defaultNow(),
 });

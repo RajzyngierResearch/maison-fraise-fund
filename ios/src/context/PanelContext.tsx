@@ -35,7 +35,12 @@ export type PanelId =
   | 'editorial-piece'
   | 'write-piece'
   | 'member-directory'
-  | 'fund-contribute';
+  | 'fund-contribute'
+  | 'contacts'
+  | 'nfc-tap'
+  | 'portal-owner'
+  | 'portal-subscriber'
+  | 'portal-upload';
 
 export interface OrderState {
   variety_id: number | null;

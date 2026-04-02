@@ -36,6 +36,11 @@ import EditorialPiecePanel from './panels/EditorialPiecePanel';
 import WritePiecePanel from './panels/WritePiecePanel';
 import MemberDirectoryPanel from './panels/MemberDirectoryPanel';
 import FundContributePanel from './panels/FundContributePanel';
+import ContactsPanel from './panels/ContactsPanel';
+import NfcTapPanel from './panels/NfcTapPanel';
+import PortalOwnerPanel from './panels/PortalOwnerPanel';
+import PortalSubscriberPanel from './panels/PortalSubscriberPanel';
+import PortalUploadPanel from './panels/PortalUploadPanel';
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
@@ -72,6 +77,11 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   'write-piece': WritePiecePanel,
   'member-directory': MemberDirectoryPanel,
   'fund-contribute': FundContributePanel,
+  'contacts': ContactsPanel,
+  'nfc-tap': NfcTapPanel,
+  'portal-owner': PortalOwnerPanel,
+  'portal-subscriber': PortalSubscriberPanel,
+  'portal-upload': PortalUploadPanel,
 };
 
 // Panels that should always expand the sheet to full height
@@ -81,6 +91,7 @@ const FULL_HEIGHT_PANELS = new Set([
   'lookbook', 'user-profile', 'order-history', 'notification-inbox', 'activity-feed',
   'search', 'following-list', 'nomination-history',
   'membership', 'editorial-feed', 'editorial-piece', 'write-piece', 'member-directory', 'fund-contribute',
+  'contacts', 'nfc-tap', 'portal-owner', 'portal-subscriber', 'portal-upload',
 ]);
 
 // Panels that expand to medium height

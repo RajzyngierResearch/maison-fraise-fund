@@ -1,58 +1,90 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, Image,
+  StyleSheet,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePanel } from '../../context/PanelContext';
-import { fetchPublicProfile, followUser, unfollowUser, fetchFollowStatus, fetchUserPlacements, fetchLegitimacyBreakdown } from '../../lib/api';
-import { useColors, fonts } from '../../theme';
-import { SPACING } from '../../theme';
+import {
+  fetchProfile,
+  fetchMyPortalAccess,
+  fetchPublicProfile,
+  followUser,
+  unfollowUser,
+  fetchFollowStatus,
+} from '../../lib/api';
+import { useColors, fonts, SPACING } from '../../theme';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function fmtDate(iso: string) {
+function BlinkingCursor() {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const id = setInterval(() => setVisible(v => !v), 500);
+    return () => clearInterval(id);
+  }, []);
+  return <Text style={{ opacity: visible ? 1 : 0 }}>_</Text>;
+}
+
+function fmtDate(iso: string): string {
   const d = new Date(iso);
-  return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function getInitials(name: string): string {
+  return name.slice(0, 1).toUpperCase();
 }
 
 export default function UserProfilePanel() {
-  const { goBack, panelData } = usePanel();
+  const { goBack, panelData, showPanel, setPanelData } = usePanel();
   const c = useColors();
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [followLoading, setFollowLoading] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [placements, setPlacements] = useState<any[]>([]);
-  const [legitimacyScore, setLegitimacyScore] = useState<number | null>(null);
 
   const userId: number | null = panelData?.userId ?? null;
 
-  useEffect(() => {
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
+  const [publicProfile, setPublicProfile] = useState<any>(null);
+  const [myAccessRecord, setMyAccessRecord] = useState<any>(null);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+
+  const hasPortalAccess = myAccessRecord && new Date(myAccessRecord.expires_at) > new Date();
+
+  const load = useCallback(async () => {
     if (!userId) { setLoading(false); return; }
-    AsyncStorage.getItem('user_db_id').then(async storedId => {
-      const cid = storedId ? parseInt(storedId) : null;
+    try {
+      const storedId = await AsyncStorage.getItem('user_db_id');
+      const cid = storedId ? parseInt(storedId, 10) : null;
       setCurrentUserId(cid);
-      try {
-        const [profileData, placementsData, legitimacyData] = await Promise.all([
-          fetchPublicProfile(userId),
-          fetchUserPlacements(userId),
-          fetchLegitimacyBreakdown(userId).catch(() => null),
-        ]);
-        setProfile(profileData);
-        setPlacements(placementsData);
-        if (legitimacyData) setLegitimacyScore(legitimacyData.total);
-        if (cid && cid !== userId) {
-          const status = await fetchFollowStatus(userId, cid).catch(() => null);
-          if (status) setIsFollowing(status.is_following);
-        }
-      } catch {
-        // non-fatal
-      } finally {
-        setLoading(false);
+
+      const [profileData, pubProfile, myAccess] = await Promise.all([
+        fetchProfile(userId).catch(() => null),
+        fetchPublicProfile(userId).catch(() => null),
+        fetchMyPortalAccess().catch(() => []),
+      ]);
+
+      setProfile(profileData);
+      setPublicProfile(pubProfile);
+
+      const found = (myAccess as any[]).find(
+        (a: any) => a.owner_id === userId || a.portal_owner_id === userId,
+      );
+      setMyAccessRecord(found ?? null);
+
+      if (cid && cid !== userId) {
+        const status = await fetchFollowStatus(userId, cid).catch(() => null);
+        if (status) setIsFollowing(status.is_following);
       }
-    });
+    } catch {
+      // non-fatal
+    } finally {
+      setLoading(false);
+    }
   }, [userId]);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleFollowToggle = async () => {
     if (!userId || !currentUserId || followLoading) return;
@@ -72,6 +104,33 @@ export default function UserProfilePanel() {
     }
   };
 
+  const handleViewPiece = (pieceId: number) => {
+    setPanelData({ pieceId });
+    showPanel('editorial-piece');
+  };
+
+  const handleRequestPortalAccess = () => {
+    if (!userId) return;
+    setPanelData({ userId, requesting: true });
+    showPanel('portal-subscriber');
+  };
+
+  const handleViewPortal = () => {
+    if (!userId) return;
+    setPanelData({ userId });
+    showPanel('portal-subscriber');
+  };
+
+  const displayName = profile?.display_name ?? publicProfile?.display_name ?? '';
+  const handle = displayName
+    ? `@${displayName.toLowerCase().replace(/\s+/g, '_')}`
+    : `@user_${userId}`;
+  const tier = profile?.membership_tier ?? publicProfile?.membership_tier ?? '';
+  const portraitUrl = profile?.portrait_url ?? null;
+  const workerStatus = profile?.worker_status ?? null;
+  const portalOptedIn = profile?.portal_opted_in ?? false;
+  const editorialPieces: any[] = profile?.editorial_pieces ?? [];
+
   const showFollowBtn = currentUserId !== null && userId !== null && currentUserId !== userId;
 
   return (
@@ -80,127 +139,119 @@ export default function UserProfilePanel() {
         <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={[styles.backBtnText, { color: c.accent }]}>←</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: c.text }]} numberOfLines={1}>
-          {profile?.display_name ?? '—'}
-        </Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={[styles.headerPrompt, { color: c.accent }]}>{'> '}</Text>
+          <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>
+            {loading ? 'profile' : `profile: ${handle}`}
+          </Text>
+          {loading && <BlinkingCursor />}
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator color={c.accent} style={{ marginTop: 40 }} />
-        ) : !profile ? (
-          <Text style={[styles.empty, { color: c.muted }]}>Profile not found.</Text>
-        ) : (
+        {!loading && (
           <>
-            {/* Stats row */}
-            <View style={[styles.statsRow, { borderColor: c.border }]}>
-              <View style={styles.statBlock}>
-                <Text style={[styles.statValue, { color: c.text }]}>{profile.follower_count}</Text>
-                <Text style={[styles.statLabel, { color: c.muted }]}>FOLLOWERS</Text>
-              </View>
-              <View style={[styles.statDivider, { backgroundColor: c.border }]} />
-              <View style={styles.statBlock}>
-                <Text style={[styles.statValue, { color: c.text }]}>{profile.nomination_count}</Text>
-                <Text style={[styles.statLabel, { color: c.muted }]}>NOMINATIONS</Text>
-              </View>
-              <View style={[styles.statDivider, { backgroundColor: c.border }]} />
-              <View style={styles.statBlock}>
-                <Text style={[styles.statValue, { color: c.text }]}>{profile.past_placements}</Text>
-                <Text style={[styles.statLabel, { color: c.muted }]}>PLACEMENTS</Text>
-              </View>
-              {legitimacyScore !== null && (
-                <>
-                  <View style={[styles.statDivider, { backgroundColor: c.border }]} />
-                  <View style={styles.statBlock}>
-                    <Text style={[styles.statValue, { color: c.text }]}>{legitimacyScore}</Text>
-                    <Text style={[styles.statLabel, { color: c.muted }]}>score</Text>
-                  </View>
-                </>
-              )}
+            <Text style={[styles.separator, { color: c.border }]}>{'────────────────────────────────'}</Text>
+
+            {/* Portrait */}
+            <View style={styles.portraitRow}>
+              {portraitUrl ? (
+                <Image source={{ uri: portraitUrl }} style={styles.portrait} />
+              ) : displayName ? (
+                <View style={[styles.initialsCircle, { backgroundColor: c.accent }]}>
+                  <Text style={styles.initialsText}>{getInitials(displayName)}</Text>
+                </View>
+              ) : null}
             </View>
+
+            {/* Name and tier */}
+            <Text style={[styles.nameText, { color: c.text }]}>{displayName.toUpperCase()}</Text>
+            {tier ? (
+              <Text style={[styles.tierText, { color: c.muted }]}>
+                {`Maison · ${tier.charAt(0).toUpperCase() + tier.slice(1)}`}
+              </Text>
+            ) : null}
+            {workerStatus ? (
+              <Text style={[styles.workerText, { color: c.muted }]}>
+                {`Worker: ${workerStatus}`}
+              </Text>
+            ) : null}
 
             {/* Follow button */}
             {showFollowBtn && (
               <TouchableOpacity
-                style={[
-                  styles.followBtn,
-                  isFollowing
-                    ? { borderColor: c.border, backgroundColor: 'transparent' }
-                    : { borderColor: c.accent, backgroundColor: c.accent },
-                ]}
+                style={[styles.followBtn, { borderColor: isFollowing ? c.border : c.accent }]}
                 onPress={handleFollowToggle}
                 disabled={followLoading}
-                activeOpacity={0.8}
+                activeOpacity={0.7}
               >
-                <Text
-                  style={[
-                    styles.followBtnText,
-                    { color: isFollowing ? c.muted : '#0C0C0E' },
-                  ]}
-                >
-                  {followLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
+                <Text style={[styles.followBtnText, { color: isFollowing ? c.muted : c.accent }]}>
+                  {followLoading ? '…' : isFollowing ? '> following_' : '> follow_'}
                 </Text>
               </TouchableOpacity>
             )}
 
-            {/* Active placement */}
-            {profile.active_placement && (
-              <View style={[styles.placementCard, { backgroundColor: c.card, borderColor: c.border }]}>
-                <View style={styles.placedDot} />
-                <View style={{ flex: 1, gap: 3 }}>
-                  <Text style={[styles.placementLabel, { color: c.muted }]}>CURRENTLY AT</Text>
-                  <Text style={[styles.placementBiz, { color: c.text }]}>{profile.active_placement.business_name}</Text>
-                  <Text style={[styles.placementAddr, { color: c.muted }]}>{profile.active_placement.business_address}</Text>
-                </View>
-              </View>
-            )}
-
-            {/* Tags */}
-            <View style={styles.tagsRow}>
-              {profile.is_dj && (
-                <View style={[styles.tag, { borderColor: c.border }]}>
-                  <Text style={[styles.tagText, { color: c.muted }]}>DJ</Text>
-                </View>
-              )}
-              {profile.follower_count >= 10 && (
-                <View style={[styles.tag, { borderColor: c.border }]}>
-                  <Text style={[styles.tagText, { color: c.muted }]}>Scene regular</Text>
-                </View>
-              )}
-              {profile.past_placements >= 2 && (
-                <View style={[styles.tag, { borderColor: c.border }]}>
-                  <Text style={[styles.tagText, { color: c.muted }]}>Returning talent</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Sets section */}
-            {placements.length > 0 && (
-              <View style={styles.setsSection}>
-                <Text style={[styles.setsSectionHeader, { color: c.text }]}>Sets</Text>
-                {placements.map((placement: any, i: number) => (
-                  <View key={placement.id ?? i} style={[styles.setRow, { borderTopColor: c.border }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.setBusinessName, { color: c.text }]}>{placement.business_name}</Text>
-                      <Text style={[styles.setDate, { color: c.muted }]}>
-                        {placement.starts_at ? fmtDate(placement.starts_at) : '—'}
-                      </Text>
-                    </View>
-                    <View style={[
-                      styles.statusBadge,
-                      { backgroundColor: placement.status === 'active' ? c.accent : 'transparent', borderColor: c.border },
-                    ]}>
-                      <Text style={[
-                        styles.statusBadgeText,
-                        { color: placement.status === 'active' ? '#fff' : c.muted },
-                      ]}>
-                        {placement.status ?? 'completed'}
-                      </Text>
-                    </View>
+            {/* Editorial section */}
+            {editorialPieces.length > 0 && (
+              <>
+                <Text style={[styles.separator, { color: c.border }]}>{'────────────────────────────────'}</Text>
+                <Text style={[styles.sectionHeader, { color: c.muted }]}>
+                  {`EDITORIAL [${editorialPieces.length}]`}
+                </Text>
+                {editorialPieces.map((piece: any, i: number) => (
+                  <View key={piece.id ?? i} style={styles.pieceBlock}>
+                    <Text style={[styles.pieceDate, { color: c.muted }]}>
+                      {`[${fmtDate(piece.created_at ?? new Date().toISOString())}]`}
+                    </Text>
+                    <Text style={[styles.pieceTitle, { color: c.text }]}>{piece.title}</Text>
+                    {piece.tag && (
+                      <Text style={[styles.pieceTag, { color: c.muted }]}>{`tag: ${piece.tag}`}</Text>
+                    )}
+                    <TouchableOpacity
+                      style={styles.actionLine}
+                      onPress={() => handleViewPiece(piece.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.actionText, { color: c.accent }]}>{'> read_'}</Text>
+                    </TouchableOpacity>
                   </View>
                 ))}
-              </View>
+              </>
+            )}
+
+            {/* Portal section */}
+            {portalOptedIn && (
+              <>
+                <Text style={[styles.separator, { color: c.border }]}>{'────────────────────────────────'}</Text>
+                <Text style={[styles.sectionHeader, { color: c.muted }]}>{'PORTAL'}</Text>
+
+                {hasPortalAccess ? (
+                  <>
+                    <Text style={[styles.accessStatus, { color: '#4CAF50' }]}>
+                      {`▓ subscribed · expires ${fmtDate(myAccessRecord.expires_at)}`}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.actionLine}
+                      onPress={handleViewPortal}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.actionText, { color: c.accent }]}>{'> view content_'}</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={[styles.accessStatus, { color: c.muted }]}>{'▓ access required'}</Text>
+                    <TouchableOpacity
+                      style={styles.actionLine}
+                      onPress={handleRequestPortalAccess}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.actionText, { color: c.accent }]}>{'> request access_'}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </>
             )}
           </>
         )}
@@ -222,62 +273,41 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, paddingVertical: 4 },
   backBtnText: { fontSize: 28, lineHeight: 34 },
-  title: { flex: 1, textAlign: 'center', fontSize: 20, fontFamily: fonts.playfair },
+  headerTitleRow: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  headerPrompt: { fontFamily: fonts.dmMono, fontSize: 12, letterSpacing: 1 },
+  headerTitle: { fontFamily: fonts.dmMono, fontSize: 11, letterSpacing: 1.5, flex: 1 },
   headerSpacer: { width: 40 },
-  body: { padding: SPACING.md, gap: 14 },
-  empty: { textAlign: 'center', marginTop: 60, fontFamily: fonts.dmSans, fontStyle: 'italic' },
 
-  statsRow: {
-    flexDirection: 'row',
+  body: { paddingHorizontal: SPACING.md, paddingTop: SPACING.md, gap: 8 },
+  separator: { fontFamily: fonts.dmMono, fontSize: 11, marginVertical: 4 },
+
+  portraitRow: { alignItems: 'flex-start', marginBottom: 4 },
+  portrait: { width: 72, height: 72, borderRadius: 36 },
+  initialsCircle: { width: 72, height: 72, borderRadius: 36, justifyContent: 'center', alignItems: 'center' },
+  initialsText: { fontFamily: fonts.dmMono, fontSize: 28, color: '#fff' },
+
+  nameText: { fontFamily: fonts.dmMono, fontSize: 15, letterSpacing: 2 },
+  tierText: { fontFamily: fonts.dmMono, fontSize: 12 },
+  workerText: { fontFamily: fonts.dmMono, fontSize: 12 },
+
+  followBtn: {
+    alignSelf: 'flex-start',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    overflow: 'hidden',
+    borderRadius: 6,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
   },
-  statBlock: { flex: 1, alignItems: 'center', paddingVertical: 16, gap: 4 },
-  statDivider: { width: StyleSheet.hairlineWidth },
-  statValue: { fontSize: 22, fontFamily: fonts.playfair },
-  statLabel: { fontSize: 9, fontFamily: fonts.dmMono, letterSpacing: 1.5 },
+  followBtnText: { fontFamily: fonts.dmMono, fontSize: 12 },
 
-  followBtn: { marginTop: 4, borderRadius: 20, paddingVertical: 10, paddingHorizontal: 24, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth },
-  followBtnText: { fontFamily: fonts.dmMono, fontSize: 11, letterSpacing: 1.5 },
+  sectionHeader: { fontFamily: fonts.dmMono, fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' },
 
-  placementCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderRadius: 14,
-    padding: SPACING.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: 10,
-  },
-  placedDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#C9973A', marginTop: 4 },
-  placementLabel: { fontSize: 9, fontFamily: fonts.dmMono, letterSpacing: 1.5 },
-  placementBiz: { fontSize: 16, fontFamily: fonts.playfair },
-  placementAddr: { fontSize: 12, fontFamily: fonts.dmSans },
+  pieceBlock: { gap: 2, paddingLeft: 8 },
+  pieceDate: { fontFamily: fonts.dmMono, fontSize: 11 },
+  pieceTitle: { fontFamily: fonts.dmMono, fontSize: 13 },
+  pieceTag: { fontFamily: fonts.dmMono, fontSize: 11 },
 
-  tagsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tag: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 5,
-  },
-  tagText: { fontSize: 11, fontFamily: fonts.dmMono },
+  accessStatus: { fontFamily: fonts.dmMono, fontSize: 12 },
 
-  setsSection: { gap: 0 },
-  setsSectionHeader: { fontSize: 16, fontFamily: fonts.dmMono, marginBottom: 8 },
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 10,
-  },
-  setBusinessName: { fontSize: 15, fontFamily: fonts.playfair },
-  setDate: { fontSize: 11, fontFamily: fonts.dmMono, marginTop: 2 },
-  statusBadge: {
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  statusBadgeText: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 0.5 },
+  actionLine: { flexDirection: 'row', alignItems: 'center' },
+  actionText: { fontFamily: fonts.dmMono, fontSize: 12 },
 });

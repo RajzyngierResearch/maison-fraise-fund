@@ -26,6 +26,9 @@ import contractsRouter from './routes/contracts';
 import searchRouter from './routes/search';
 import { membershipsRouter, membersRouter, fundRouter } from './routes/memberships';
 import editorialRouter from './routes/editorial';
+import nfcRouter, { contactsRouter } from './routes/nfc';
+import portalRouter from './routes/portal';
+import profilesRouter from './routes/profiles';
 import { logger } from './lib/logger';
 import { db } from './db';
 import { editorialPieces, users, memberships } from './db/schema';
@@ -73,6 +76,10 @@ app.use('/api/memberships', membershipsRouter);
 app.use('/api/members', membersRouter);
 app.use('/api/fund', fundRouter);
 app.use('/api/editorial', editorialRouter);
+app.use('/api/nfc', nfcRouter);
+app.use('/api/contacts', contactsRouter);
+app.use('/api/portal', portalRouter);
+app.use('/api/profiles', profilesRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 

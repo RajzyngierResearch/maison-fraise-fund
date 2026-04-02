@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { eq, isNull, sql, and, lte, sum, gte, desc, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
-import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist } from '../db/schema';
+import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist, portalAccess } from '../db/schema';
 import { logger } from '../lib/logger';
 import { sendOrderReady, sendContractOffer, sendAuditionResult } from '../lib/resend';
 import { sendPushNotification } from '../lib/push';
@@ -866,6 +866,51 @@ router.post('/migrate', async (_req: Request, res: Response) => {
     await db.execute(sql`ALTER TABLE editorial_pieces ADD COLUMN IF NOT EXISTS tag TEXT`);
     await db.execute(sql`CREATE TABLE IF NOT EXISTS membership_waitlist (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), tier membership_tier NOT NULL, message TEXT, created_at TIMESTAMP NOT NULL DEFAULT NOW())`);
 
+    // Portal / NFC additions
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS portal_opted_in boolean NOT NULL DEFAULT false`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS portrait_url text`);
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS worker_status text`);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS nfc_connections (
+        id serial PRIMARY KEY,
+        user_a integer NOT NULL REFERENCES users(id),
+        user_b integer NOT NULL REFERENCES users(id),
+        location text,
+        confirmed_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS explicit_portals (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id) UNIQUE,
+        opted_in boolean NOT NULL DEFAULT false,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_access (
+        id serial PRIMARY KEY,
+        buyer_id integer NOT NULL REFERENCES users(id),
+        owner_id integer NOT NULL REFERENCES users(id),
+        amount_cents integer NOT NULL,
+        platform_cut_cents integer NOT NULL,
+        source text NOT NULL,
+        stripe_payment_intent_id text,
+        expires_at timestamp NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS portal_content (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id),
+        media_url text NOT NULL,
+        type text NOT NULL,
+        caption text,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+
     res.json({ ok: true, message: 'Migration complete' });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -1559,6 +1604,56 @@ router.get('/memberships/waitlist', async (_req: Request, res: Response) => {
       .innerJoin(users, eq(membershipWaitlist.user_id, users.id))
       .orderBy(membershipWaitlist.tier, membershipWaitlist.created_at);
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/portal/activity
+router.get('/portal/activity', async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+
+    // Aggregates
+    const [stats] = await db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE expires_at > ${now}) AS total_subscribers,
+        COALESCE(SUM(amount_cents), 0) AS total_revenue_cents,
+        COALESCE(SUM(platform_cut_cents), 0) AS total_cut_cents
+      FROM portal_access
+    `);
+
+    const [optedInRow] = await db.execute(sql`
+      SELECT COUNT(*) AS opted_in_count FROM users WHERE portal_opted_in = true
+    `);
+
+    // Last 20 portal_access rows with buyer and owner names
+    const recent = await db.execute(sql`
+      SELECT
+        pa.id,
+        pa.buyer_id,
+        bu.display_name AS buyer_display_name,
+        pa.owner_id,
+        ou.display_name AS owner_display_name,
+        pa.amount_cents,
+        pa.platform_cut_cents,
+        pa.source,
+        pa.expires_at,
+        pa.created_at
+      FROM portal_access pa
+      LEFT JOIN users bu ON bu.id = pa.buyer_id
+      LEFT JOIN users ou ON ou.id = pa.owner_id
+      ORDER BY pa.created_at DESC
+      LIMIT 20
+    `);
+
+    res.json({
+      total_subscribers: Number((stats as any).total_subscribers ?? 0),
+      total_revenue_cents: Number((stats as any).total_revenue_cents ?? 0),
+      total_cut_cents: Number((stats as any).total_cut_cents ?? 0),
+      opted_in_count: Number((optedInRow as any).opted_in_count ?? 0),
+      recent,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

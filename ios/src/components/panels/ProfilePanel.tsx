@@ -575,13 +575,55 @@ export default function ProfilePanel() {
                 <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
 
                 <TouchableOpacity
-                  style={[styles.actionRow, styles.actionRowLast]}
+                  style={styles.actionRow}
                   onPress={() => showPanel('notification-inbox')}
                   activeOpacity={0.75}
                 >
                   <View style={styles.actionInfo}>
                     <Text style={[styles.actionTitle, { color: c.text }]}>Notifications</Text>
                     <Text style={[styles.actionSub, { color: c.muted }]}>Your inbox from Maison Fraise</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                {/* Tap to Connect */}
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={() => showPanel('nfc-tap')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.accent, fontFamily: fonts.dmMono }]}>{'> tap to connect_'}</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Exchange contact via NFC code</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                <TouchableOpacity
+                  style={styles.actionRow}
+                  onPress={() => showPanel('contacts')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.text }]}>Contacts</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Your NFC connections</Text>
+                  </View>
+                  <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
+                </TouchableOpacity>
+
+                <View style={[styles.actionRowDivider, { backgroundColor: c.border }]} />
+
+                <TouchableOpacity
+                  style={[styles.actionRow, styles.actionRowLast]}
+                  onPress={() => showPanel('portal-owner')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.actionInfo}>
+                    <Text style={[styles.actionTitle, { color: c.text }]}>My Portal</Text>
+                    <Text style={[styles.actionSub, { color: c.muted }]}>Manage your exclusive content</Text>
                   </View>
                   <Text style={[styles.chevron, { color: c.muted }]}>›</Text>
                 </TouchableOpacity>

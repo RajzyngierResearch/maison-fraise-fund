@@ -4,11 +4,12 @@ import { eq, sql, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { stripe } from '../lib/stripe';
 import { db } from '../db';
-import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions } from '../db/schema';
+import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions, portalAccess } from '../db/schema';
 import { sendPushNotification } from '../lib/push';
 import { sendRsvpConfirmed, sendOrderConfirmation, sendTipReceived } from '../lib/resend';
 import { logger } from '../lib/logger';
 import { TIER_LABELS } from '../lib/membership';
+import { calculateCut } from '../lib/portal';
 
 const router = Router();
 
@@ -261,6 +262,46 @@ router.post('/webhook', async (req: Request, res: Response) => {
           sendPushNotification(recipient.push_token, {
             title: 'Membership contribution',
             body: `${fromLabel} contributed CA$${(amount / 100).toFixed(2)} to your membership fund.`,
+            data: { screen: 'membership' },
+          }).catch(() => {});
+        }
+      } else if (type === 'portal_access') {
+        const buyerId = parseInt(pi.metadata.buyer_id, 10);
+        const ownerId = parseInt(pi.metadata.owner_id, 10);
+        const source = pi.metadata.source;
+        const amount = pi.amount;
+
+        const expiresAt = new Date();
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+
+        const { ownerCents, cutCents } = calculateCut(amount);
+
+        await db.insert(portalAccess).values({
+          buyer_id: buyerId,
+          owner_id: ownerId,
+          amount_cents: amount,
+          platform_cut_cents: cutCents,
+          source,
+          stripe_payment_intent_id: pi.id,
+          expires_at: expiresAt,
+        });
+
+        // Credit owner's membership fund
+        await db.execute(sql`
+          INSERT INTO membership_funds (user_id, balance_cents, cycle_start, updated_at)
+          VALUES (${ownerId}, ${ownerCents}, NOW(), NOW())
+          ON CONFLICT (user_id) DO UPDATE SET balance_cents = membership_funds.balance_cents + ${ownerCents}, updated_at = NOW()
+        `);
+
+        // Notify owner
+        const [portalOwner] = await db
+          .select({ push_token: users.push_token })
+          .from(users)
+          .where(eq(users.id, ownerId));
+        if (portalOwner?.push_token) {
+          sendPushNotification(portalOwner.push_token, {
+            title: 'New portal subscriber',
+            body: `New portal subscriber — CA$${(ownerCents / 100).toFixed(2)} added to your fund.`,
             data: { screen: 'membership' },
           }).catch(() => {});
         }

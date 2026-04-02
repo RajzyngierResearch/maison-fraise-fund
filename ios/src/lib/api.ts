@@ -897,3 +897,104 @@ export async function joinMembershipWaitlist(tier: string, message?: string): Pr
     body: JSON.stringify({ tier, message }),
   });
 }
+
+// NFC pairing
+export async function initiateNfcPairing(): Promise<{ token: string }> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/nfc/initiate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'nfc_initiate_failed'); }
+  return r.json();
+}
+
+export async function confirmNfcPairing(
+  token: string,
+  location?: string,
+): Promise<{ connected: boolean; user: { id: number; display_name: string; membership_tier: string; portrait_url?: string } }> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/nfc/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({ token, location }),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'nfc_confirm_failed'); }
+  return r.json();
+}
+
+// Contacts
+export async function fetchContacts(): Promise<any[]> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/contacts`, { headers: auth });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+// Profile
+export async function fetchProfile(userId: number): Promise<any> {
+  const r = await fetch(`${BASE_URL}/api/profiles/${userId}`);
+  if (!r.ok) throw new Error('profile_not_found');
+  return r.json();
+}
+
+// Portal
+export async function optInToPortal(): Promise<void> {
+  const auth = await authHeader();
+  await fetch(`${BASE_URL}/api/portal/opt-in`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+  });
+}
+
+export async function requestPortalAccess(
+  ownerId: number,
+  source: 'tap' | 'receipt',
+): Promise<{ client_secret: string; amount_cents: number }> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/portal/request-access/${ownerId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({ source }),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'portal_access_failed'); }
+  return r.json();
+}
+
+export async function fetchPortalContent(userId: number): Promise<any[]> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/portal/${userId}/content`, { headers: auth });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function uploadPortalContent(
+  mediaUrl: string,
+  type: 'photo' | 'video',
+  caption?: string,
+): Promise<any> {
+  const auth = await authHeader();
+  const storedId = await AsyncStorage.getItem('user_db_id');
+  if (!storedId) throw new Error('not_logged_in');
+  const r = await fetch(`${BASE_URL}/api/portal/${storedId}/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({ media_url: mediaUrl, type, caption }),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'upload_failed'); }
+  return r.json();
+}
+
+export async function fetchMySubscribers(): Promise<any[]> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/portal/my-subscribers`, { headers: auth });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function fetchMyPortalAccess(): Promise<any[]> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/portal/my-access`, { headers: auth });
+  if (!r.ok) return [];
+  return r.json();
+}

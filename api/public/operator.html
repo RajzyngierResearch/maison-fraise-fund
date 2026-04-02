@@ -355,6 +355,7 @@
       { id:'revenue',   label:'Revenue' },
       { id:'editorial', label:'Editorial' },
       { id:'members',   label:'Members' },
+      { id:'portal',    label:'Portal' },
     ];
     document.getElementById('tab-row').innerHTML = tabs.map(t =>
       `<div class="tab ${t.id === currentTab ? 'active' : ''}" onclick="switchTab('${t.id}')">${t.label}</div>`
@@ -374,6 +375,7 @@
     else if (tab === 'revenue')    renderRevenueTab();
     else if (tab === 'editorial')  renderEditorialTab();
     else if (tab === 'members')    renderMembersTab();
+    else if (tab === 'portal')     loadPortalActivity();
   }
 
   // ── ORDERS TAB ────────────────────────────────────────
@@ -1829,6 +1831,86 @@
       const sel = document.getElementById('v-loc-' + v.id);
       if (sel && v.location_id) sel.value = String(v.location_id);
     });
+  }
+
+  // ── PORTAL TAB ────────────────────────────────────────
+  async function loadPortalActivity() {
+    const body = document.getElementById('dash-body');
+    body.innerHTML = '<div class="empty">Loading portal data…</div>';
+    try {
+      const res = await fetch(BASE + '/api/admin/portal/activity', { headers: { 'X-Admin-PIN': currentPin } });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+
+      const rows      = data.rows      || [];
+      const optedIn   = data.opted_in_count   != null ? data.opted_in_count   : '—';
+      const activeSubs = data.active_subscribers != null ? data.active_subscribers : rows.filter(r => r.expires_at && new Date(r.expires_at) > new Date()).length;
+      const totalRev  = rows.reduce((s, r) => s + (r.amount_cents || 0), 0);
+      const platCut   = rows.reduce((s, r) => s + (r.platform_cut_cents || 0), 0);
+
+      const fmtCAD = cents => 'CA$' + (cents / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      const tableRows = rows.length === 0
+        ? `<tr><td colspan="7" style="text-align:center;padding:24px 0;color:var(--muted);font-style:italic;font-family:'DM Sans',sans-serif;font-size:14px;">No portal activity yet.</td></tr>`
+        : rows.map(r => {
+            const sourceBadge = r.source === 'tap'
+              ? `<span class="status-badge" style="background:rgba(100,160,255,0.14);color:rgba(130,190,255,0.9);">tap</span>`
+              : `<span class="status-badge" style="background:rgba(80,200,120,0.12);color:rgba(100,210,140,0.9);">receipt</span>`;
+            return `<tr>
+              <td style="padding:10px 8px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;">${fmtDate(r.created_at)}</td>
+              <td style="padding:10px 8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);">${r.buyer_email || '—'}</td>
+              <td style="padding:10px 8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);">${r.owner_email || '—'}</td>
+              <td style="padding:10px 8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text);">${r.amount_cents != null ? fmtCAD(r.amount_cents) : '—'}</td>
+              <td style="padding:10px 8px;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);">${r.platform_cut_cents != null ? fmtCAD(r.platform_cut_cents) : '—'}</td>
+              <td style="padding:10px 8px;">${sourceBadge}</td>
+              <td style="padding:10px 8px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;">${fmtDate(r.expires_at)}</td>
+            </tr>`;
+          }).join('');
+
+      body.innerHTML = `
+        <div class="section-label">Portal Overview</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+          <div class="stat-card">
+            <div class="stat-value">${optedIn}</div>
+            <div class="stat-label">OPTED IN</div>
+            <div class="stat-sub">users with portal_opted_in</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${activeSubs}</div>
+            <div class="stat-label">ACTIVE SUBSCRIBERS</div>
+            <div class="stat-sub">portal_access not expired</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${fmtCAD(totalRev)}</div>
+            <div class="stat-label">TOTAL REVENUE</div>
+            <div class="stat-sub">sum of amount_cents</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${fmtCAD(platCut)}</div>
+            <div class="stat-label">PLATFORM CUT</div>
+            <div class="stat-sub">sum of platform_cut_cents</div>
+          </div>
+        </div>
+        <div class="section-label">Recent Activity</div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);">
+                <th style="padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);white-space:nowrap;">Date</th>
+                <th style="padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);">Buyer</th>
+                <th style="padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);">Owner</th>
+                <th style="padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);">Amount</th>
+                <th style="padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);">Cut</th>
+                <th style="padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);">Source</th>
+                <th style="padding:10px 8px;text-align:left;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);">Expires</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>`;
+    } catch (e) {
+      body.innerHTML = '<div class="empty">Could not load portal data.</div>';
+    }
   }
 
   async function updateVariety(id) {
