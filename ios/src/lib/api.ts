@@ -1199,6 +1199,35 @@ export async function fetchNfcPending(): Promise<any[]> {
   return r.json();
 }
 
+// ─── Offer composer ───────────────────────────────────────────────────────────
+
+export async function fetchRecentCustomers(): Promise<any[]> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/admin/recent-customers`, { headers: auth });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function sendOffer(payload: {
+  recipient_id: number;
+  variety_id: number;
+  chocolate: string;
+  finish: string;
+  quantity: number;
+  time_slot_id: number;
+  location_id: number;
+  note?: string;
+}): Promise<any> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/messages/offer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'send_failed'); }
+  return r.json();
+}
+
 export async function fundChocolateLocation(
   businessId: number,
 ): Promise<{ client_secret: string; amount_cents: number }> {

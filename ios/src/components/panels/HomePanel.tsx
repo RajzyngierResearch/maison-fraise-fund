@@ -241,6 +241,13 @@ export default function HomePanel() {
           })}
           <TouchableOpacity
             style={[styles.utilityRow, { borderTopColor: c.border }]}
+            onPress={() => showPanel('offer-composer')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.utilityText, { color: c.muted }]}>send offer →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.utilityRow, { borderTopColor: c.border }]}
             onPress={() => showPanel('nfc-write')}
             activeOpacity={0.7}
           >
