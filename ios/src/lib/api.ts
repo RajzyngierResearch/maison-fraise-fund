@@ -1192,6 +1192,13 @@ export async function updateVarietySortOrder(id: number, sort_order: number, adm
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'sort_order_update_failed'); }
 }
 
+export async function fetchNfcPending(): Promise<any[]> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/admin/nfc-pending`, { headers: auth });
+  if (!r.ok) throw new Error('fetch_failed');
+  return r.json();
+}
+
 export async function fundChocolateLocation(
   businessId: number,
 ): Promise<{ client_secret: string; amount_cents: number }> {

@@ -53,6 +53,7 @@ import PortalConsentPanel from './panels/PortalConsentPanel';
 import PortalOwnerPanel from './panels/PortalOwnerPanel';
 import PortalSubscriberPanel from './panels/PortalSubscriberPanel';
 import PortalUploadPanel from './panels/PortalUploadPanel';
+import NfcWritePanel from './panels/NfcWritePanel';
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
@@ -106,6 +107,7 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   'portal-owner': PortalOwnerPanel,
   'portal-subscriber': PortalSubscriberPanel,
   'portal-upload': PortalUploadPanel,
+  'nfc-write': NfcWritePanel,
 };
 
 // Panels that should always expand the sheet to full height
@@ -119,6 +121,7 @@ const FULL_HEIGHT_PANELS = new Set([
   'greenhouses', 'greenhouse-detail', 'fund-contribute', 'patronages', 'patronage-detail',
   'chocolate-locations', 'chocolate-location-detail', 'operator-varieties', 'contacts',
   'portal-consent', 'portal-owner', 'portal-subscriber', 'portal-upload',
+  'nfc-write',
 ]);
 
 // Panels that expand to medium height

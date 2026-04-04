@@ -239,6 +239,13 @@ export default function HomePanel() {
               </View>
             );
           })}
+          <TouchableOpacity
+            style={[styles.utilityRow, { borderTopColor: c.border }]}
+            onPress={() => showPanel('nfc-write')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.utilityText, { color: c.muted }]}>write nfc tokens →</Text>
+          </TouchableOpacity>
           <View style={{ height: 32 }} />
         </ScrollView>
       )}
@@ -305,6 +312,8 @@ const styles = StyleSheet.create({
   price: { fontSize: 15, fontFamily: fonts.dmMono },
   stock: { fontSize: 11, fontFamily: fonts.dmSans },
   emptyText: { fontSize: 15, fontFamily: fonts.dmSans, textAlign: 'center', fontStyle: 'italic' },
+  utilityRow: { paddingHorizontal: SPACING.md, paddingVertical: 16, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 8 },
+  utilityText: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1 },
   varietyDesc: { fontSize: 11, fontFamily: fonts.dmSans, lineHeight: 16, fontStyle: 'italic' },
   harvestDate: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 0.5, fontStyle: 'italic' },
   ratingText: { fontSize: 10, fontFamily: fonts.dmMono, color: '#FFD700' },
