@@ -2179,7 +2179,7 @@ router.patch('/greenhouses/:id', async (req: Request, res: Response) => {
   try {
     const [updated] = await db.update(greenhouses).set(body).where(eq(greenhouses.id, id)).returning();
     if (!updated) { res.status(404).json({ error: 'Not found' }); return; }
-    res.json({ ok: true });
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
