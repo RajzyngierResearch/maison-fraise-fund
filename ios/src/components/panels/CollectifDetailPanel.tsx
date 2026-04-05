@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Alert,
+  StyleSheet, ActivityIndicator, Alert, Share,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStripe } from '@stripe/stripe-react-native';
@@ -81,6 +81,15 @@ export default function CollectifDetailPanel() {
     }
   };
 
+  const handleShare = () => {
+    if (!collectif) return;
+    Share.share({
+      title: collectif.title,
+      message: `${collectif.title} — ${collectif.business_name} · ${collectif.proposed_discount_pct}% off\nhttps://fraise.chat/collectif/${collectifId}`,
+      url: `https://fraise.chat/collectif/${collectifId}`,
+    });
+  };
+
   const handleWithdraw = () => {
     Alert.alert(
       'Withdraw commitment?',
@@ -124,7 +133,9 @@ export default function CollectifDetailPanel() {
           <Text style={[styles.backArrow, { color: c.accent }]}>←</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>{collectif.business_name}</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity onPress={handleShare} style={styles.shareBtn} activeOpacity={0.7}>
+          <Text style={[styles.shareIcon, { color: c.accent }]}>↑</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: SPACING.md }} showsVerticalScrollIndicator={false}>
@@ -209,6 +220,8 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, paddingVertical: 4 },
   backArrow: { fontSize: 28, lineHeight: 34 },
+  shareBtn: { width: 40, alignItems: 'flex-end', paddingVertical: 4 },
+  shareIcon: { fontSize: 22, lineHeight: 34 },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontFamily: fonts.dmMono, letterSpacing: 1 },
   statusLabel: { fontFamily: fonts.dmMono, fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8 },
   acceptedNote: { fontFamily: fonts.dmMono, fontSize: 11, marginBottom: 10 },
