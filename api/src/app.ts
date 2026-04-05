@@ -115,7 +115,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 app.get('/operator', (_req, res) => {
-  res.sendFile(path.join(__dirname, '../public/operator.html'));
+  res.redirect(301, 'https://fraise.chat/dashboard');
 });
 
 app.get('/privacy', (_req, res) => {
