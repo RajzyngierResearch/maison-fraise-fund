@@ -16,10 +16,13 @@ db.execute(sql`
     created_by integer NOT NULL REFERENCES users(id),
     business_id integer REFERENCES businesses(id),
     business_name text NOT NULL,
+    collectif_type text NOT NULL DEFAULT 'product',
     title text NOT NULL,
     description text,
     proposed_discount_pct integer NOT NULL,
     price_cents integer NOT NULL,
+    proposed_venue text,
+    proposed_date text,
     target_quantity integer NOT NULL,
     current_quantity integer NOT NULL DEFAULT 0,
     deadline timestamptz NOT NULL,
@@ -30,6 +33,11 @@ db.execute(sql`
     created_at timestamptz NOT NULL DEFAULT now()
   )
 `).catch(() => {});
+
+// Add new columns to existing tables (idempotent)
+db.execute(sql`ALTER TABLE collectifs ADD COLUMN IF NOT EXISTS collectif_type text NOT NULL DEFAULT 'product'`).catch(() => {});
+db.execute(sql`ALTER TABLE collectifs ADD COLUMN IF NOT EXISTS proposed_venue text`).catch(() => {});
+db.execute(sql`ALTER TABLE collectifs ADD COLUMN IF NOT EXISTS proposed_date text`).catch(() => {});
 
 db.execute(sql`
   CREATE TABLE IF NOT EXISTS collectif_commitments (
@@ -101,19 +109,25 @@ router.post('/', requireUser, async (req: any, res: Response) => {
     return;
   }
 
-  const { business_name, business_id, title, description, proposed_discount_pct, price_cents, target_quantity, deadline } = req.body;
-  if (!business_name || !title || !proposed_discount_pct || !price_cents || !target_quantity || !deadline) {
+  const { business_name, business_id, collectif_type = 'product', title, description, proposed_discount_pct, price_cents, proposed_venue, proposed_date, target_quantity, deadline } = req.body;
+
+  if (!business_name || !title || !target_quantity || !deadline) {
     res.status(400).json({ error: 'missing_fields' });
     return;
   }
-  if (proposed_discount_pct < 1 || proposed_discount_pct > 80) {
-    res.status(400).json({ error: 'discount must be 1–80%' });
-    return;
+
+  const isPopup = collectif_type === 'popup';
+
+  if (isPopup) {
+    if (!proposed_venue) { res.status(400).json({ error: 'proposed_venue required for popup proposals' }); return; }
+    if (!proposed_date) { res.status(400).json({ error: 'proposed_date required for popup proposals' }); return; }
+    if (!price_cents || price_cents < 100) { res.status(400).json({ error: 'deposit must be at least CA$1.00' }); return; }
+  } else {
+    if (!proposed_discount_pct || !price_cents) { res.status(400).json({ error: 'missing_fields' }); return; }
+    if (proposed_discount_pct < 1 || proposed_discount_pct > 80) { res.status(400).json({ error: 'discount must be 1–80%' }); return; }
+    if (price_cents < 100) { res.status(400).json({ error: 'price must be at least CA$1.00' }); return; }
   }
-  if (price_cents < 100) {
-    res.status(400).json({ error: 'price must be at least CA$1.00' });
-    return;
-  }
+
   if (target_quantity < 2) {
     res.status(400).json({ error: 'target must be at least 2' });
     return;
@@ -129,13 +143,16 @@ router.post('/', requireUser, async (req: any, res: Response) => {
       created_by: userId,
       business_id: business_id ?? null,
       business_name,
+      collectif_type,
       title,
       description: description ?? null,
-      proposed_discount_pct,
+      proposed_discount_pct: isPopup ? 0 : proposed_discount_pct,
       price_cents,
+      proposed_venue: proposed_venue ?? null,
+      proposed_date: proposed_date ?? null,
       target_quantity,
       deadline: deadlineDate,
-    }).returning();
+    } as any).returning();
     res.status(201).json(created);
   } catch (err) {
     logger.error('createCollectif', err);

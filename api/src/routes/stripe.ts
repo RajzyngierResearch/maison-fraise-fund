@@ -589,12 +589,17 @@ router.post('/webhook', async (req: Request, res: Response) => {
           const [updated] = await db.update(collectifs)
             .set({ current_quantity: sql`${collectifs.current_quantity} + ${quantity}` })
             .where(eq(collectifs.id, collectifId))
-            .returning({ current_quantity: collectifs.current_quantity, target_quantity: collectifs.target_quantity, title: collectifs.title, status: collectifs.status });
+            .returning({ current_quantity: collectifs.current_quantity, target_quantity: collectifs.target_quantity, title: collectifs.title, status: collectifs.status, collectif_type: collectifs.collectif_type, proposed_venue: collectifs.proposed_venue, proposed_date: collectifs.proposed_date } as any);
 
-          if (updated && updated.current_quantity >= updated.target_quantity && updated.status === 'open') {
+          if (updated && (updated as any).current_quantity >= (updated as any).target_quantity && (updated as any).status === 'open') {
             await db.update(collectifs).set({ status: 'funded' }).where(eq(collectifs.id, collectifId));
 
-            // Notify operator
+            // Notify operator — message differs by collectif type
+            const isPopup = (updated as any).collectif_type === 'popup';
+            const pushBody = isPopup
+              ? `${(updated as any).current_quantity} people want a popup at ${(updated as any).proposed_venue ?? 'unknown venue'} on ${(updated as any).proposed_date ?? 'TBD'} — confirm the event.`
+              : `"${(updated as any).title}" hit its target — respond to the group.`;
+
             db.select({ push_token: users.push_token })
               .from(users)
               .where(eq(users.email, process.env.OPERATOR_EMAIL ?? 'operator@maison-fraise.com'))
@@ -602,8 +607,8 @@ router.post('/webhook', async (req: Request, res: Response) => {
               .then(([op]) => {
                 if (op?.push_token) {
                   sendPushNotification(op.push_token, {
-                    title: 'Collectif funded',
-                    body: `"${updated.title}" hit its target — respond to the group.`,
+                    title: isPopup ? 'Popup proposed' : 'Collectif funded',
+                    body: pushBody,
                     data: { screen: 'collectifs' },
                   });
                 }

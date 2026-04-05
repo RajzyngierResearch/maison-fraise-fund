@@ -9,7 +9,7 @@ import { useStripe } from '@stripe/stripe-react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePanel } from '../../context/PanelContext';
-import { fetchPopupRsvpStatus, createPopupRsvp, checkInPopup } from '../../lib/api';
+import { fetchPopupRsvpStatus, createPopupRsvp, checkInPopup, fetchCollectifsByBusiness } from '../../lib/api';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
 
@@ -34,7 +34,7 @@ function formatPopupTime(iso?: string, hours?: string): string {
 }
 
 export default function PopupDetailPanel() {
-  const { goBack, activeLocation, showPanel, setPanelData } = usePanel();
+  const { goBack, activeLocation, showPanel, setPanelData } = usePanel() as any;
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -43,6 +43,7 @@ export default function PopupDetailPanel() {
   const [hasRsvp, setHasRsvp] = useState(false);
   const [rsvping, setRsvping] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [relatedCollectifs, setRelatedCollectifs] = useState<any[]>([]);
 
   const biz = activeLocation;
 
@@ -76,6 +77,12 @@ export default function PopupDetailPanel() {
         setLoading(false);
       }
     });
+    // Cross-surface: load open collectifs for this business (fire-and-forget)
+    if (biz.name) {
+      fetchCollectifsByBusiness(biz.name)
+        .then(items => setRelatedCollectifs(items.filter((c: any) => c.status === 'open')))
+        .catch(() => {});
+    }
   }, [biz?.id]);
 
   const handleRsvp = async () => {
@@ -272,6 +279,25 @@ export default function PopupDetailPanel() {
           </View>
         )}
 
+        {/* Cross-surface: open collectifs for this business */}
+        {relatedCollectifs.length > 0 && (
+          <TouchableOpacity
+            style={[styles.collectifBanner, { borderColor: c.border }]}
+            onPress={() => showPanel('collectif-list')}
+            activeOpacity={0.75}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.collectifBannerLabel, { color: c.muted }]}>GROUP ORDERS</Text>
+              <Text style={[styles.collectifBannerText, { color: c.text }]}>
+                {relatedCollectifs.length === 1
+                  ? '1 open collectif from this business'
+                  : `${relatedCollectifs.length} open collectifs from this business`}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 18, color: c.accent }}>→</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={{ height: 120 }} />
       </ScrollView>
 
@@ -368,4 +394,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   ctaText: { fontSize: 16, fontFamily: fonts.dmSans, fontWeight: '700', color: '#fff' },
+  collectifBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: SPACING.md, marginTop: 4,
+    borderWidth: StyleSheet.hairlineWidth, borderRadius: 10,
+    padding: 14, gap: 10,
+  },
+  collectifBannerLabel: { fontFamily: fonts.dmMono, fontSize: 8, letterSpacing: 1.5, marginBottom: 3 },
+  collectifBannerText: { fontFamily: fonts.dmSans, fontSize: 13 },
 });

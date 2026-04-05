@@ -1254,13 +1254,23 @@ export async function fetchCollectif(id: number): Promise<any> {
   return r.json();
 }
 
+export async function fetchCollectifsByBusiness(businessName: string): Promise<any[]> {
+  const r = await fetch(`${BASE_URL}/api/collectifs?business=${encodeURIComponent(businessName)}`);
+  if (!r.ok) return [];
+  const all: any[] = await r.json();
+  return all.filter((c: any) => c.business_name.toLowerCase() === businessName.toLowerCase());
+}
+
 export async function createCollectif(payload: {
   business_name: string;
   business_id?: number;
+  collectif_type?: 'product' | 'popup';
   title: string;
   description?: string;
-  proposed_discount_pct: number;
+  proposed_discount_pct?: number;
   price_cents: number;
+  proposed_venue?: string;
+  proposed_date?: string;
   target_quantity: number;
   deadline: string;
 }): Promise<any> {

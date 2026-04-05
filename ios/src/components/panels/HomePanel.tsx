@@ -96,6 +96,11 @@ export default function HomePanel() {
     setExpandedId(prev => prev === biz.id ? null : biz.id);
   };
 
+  const handlePopupOpen = (biz: any) => {
+    setActiveLocation(biz);
+    showPanel('popup-detail');
+  };
+
   const handleVarietyPress = (v: Variety, biz: any) => {
     Haptics.selectionAsync();
     setActiveLocation(biz);
@@ -233,6 +238,15 @@ export default function HomePanel() {
 
                 {isExpanded && (
                   <View style={[styles.varietyBlock, { borderBottomColor: c.border }]}>
+                    {isPopup && (
+                      <TouchableOpacity
+                        style={[styles.viewEventRow, { borderBottomColor: c.border }]}
+                        onPress={() => handlePopupOpen(biz)}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[styles.viewEventText, { color: c.accent }]}>View event, RSVP →</Text>
+                      </TouchableOpacity>
+                    )}
                     {renderVarieties(biz)}
                   </View>
                 )}
@@ -321,6 +335,11 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 15, fontFamily: fonts.dmSans, textAlign: 'center', fontStyle: 'italic' },
   utilityRow: { paddingHorizontal: SPACING.md, paddingVertical: 16, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 8 },
   utilityText: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 1 },
+  viewEventRow: {
+    paddingHorizontal: SPACING.md, paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  viewEventText: { fontSize: 12, fontFamily: fonts.dmMono, letterSpacing: 0.5 },
   varietyDesc: { fontSize: 11, fontFamily: fonts.dmSans, lineHeight: 16, fontStyle: 'italic' },
   harvestDate: { fontSize: 10, fontFamily: fonts.dmMono, letterSpacing: 0.5, fontStyle: 'italic' },
   ratingText: { fontSize: 10, fontFamily: fonts.dmMono, color: '#FFD700' },

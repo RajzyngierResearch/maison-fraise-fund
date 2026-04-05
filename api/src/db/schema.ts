@@ -635,10 +635,13 @@ export const collectifs = pgTable('collectifs', {
   created_by: integer('created_by').notNull().references(() => users.id),
   business_id: integer('business_id').references(() => businesses.id),
   business_name: text('business_name').notNull(),
+  collectif_type: text('collectif_type').notNull().default('product'), // 'product' | 'popup'
   title: text('title').notNull(),
   description: text('description'),
-  proposed_discount_pct: integer('proposed_discount_pct').notNull(), // e.g. 15 = 15%
-  price_cents: integer('price_cents').notNull(),                      // discounted price per unit
+  proposed_discount_pct: integer('proposed_discount_pct').notNull(), // e.g. 15 = 15% (0 for popup type)
+  price_cents: integer('price_cents').notNull(),                      // discounted price per unit OR deposit per person
+  proposed_venue: text('proposed_venue'),                             // popup type: venue name/address
+  proposed_date: text('proposed_date'),                               // popup type: human-readable date string
   target_quantity: integer('target_quantity').notNull(),
   current_quantity: integer('current_quantity').notNull().default(0),
   deadline: timestamp('deadline').notNull(),

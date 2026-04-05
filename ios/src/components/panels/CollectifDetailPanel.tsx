@@ -8,6 +8,7 @@ import { useStripe } from '@stripe/stripe-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePanel } from '../../context/PanelContext';
 import { fetchCollectif, commitToCollectif, withdrawCollectif } from '../../lib/api';
+import type { Business } from '../../context/PanelContext';
 import { useColors, fonts, SPACING } from '../../theme';
 
 function fmtCAD(cents: number) {
@@ -26,7 +27,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function CollectifDetailPanel() {
-  const { goBack, panelData } = usePanel();
+  const { goBack, panelData, businesses, setActiveLocation, showPanel } = usePanel();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -125,6 +126,25 @@ export default function CollectifDetailPanel() {
     ? Math.min(1, collectif.current_quantity / collectif.target_quantity)
     : 0;
   const isOpen = collectif.status === 'open';
+  const isPopupType = collectif.collectif_type === 'popup';
+
+  // Cross-surface: find an upcoming popup from this business in the context
+  const now = new Date();
+  const relatedPopup = (businesses as Business[]).find(b => {
+    if (b.type !== 'popup') return false;
+    if (!b.launched_at) return false;
+    const d = new Date(b.launched_at);
+    d.setHours(23, 59, 59, 999);
+    if (d < now) return false;
+    return b.name.toLowerCase().includes(collectif.business_name.toLowerCase()) ||
+      collectif.business_name.toLowerCase().includes(b.name.toLowerCase());
+  });
+
+  const handleViewPopup = () => {
+    if (!relatedPopup) return;
+    setActiveLocation(relatedPopup);
+    showPanel('popup-detail');
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: c.panelBg, paddingTop: insets.top }]}>
@@ -154,14 +174,18 @@ export default function CollectifDetailPanel() {
 
         {/* Key numbers */}
         <View style={[styles.statsRow, { borderColor: c.border }]}>
-          {[
+          {(isPopupType ? [
+            { label: 'VENUE', value: collectif.proposed_venue ?? '—' },
+            { label: 'DATE', value: collectif.proposed_date ?? '—' },
+            { label: 'DEPOSIT', value: fmtCAD(collectif.price_cents) },
+          ] : [
             { label: 'DISCOUNT', value: `${collectif.proposed_discount_pct}%` },
             { label: 'PRICE/UNIT', value: fmtCAD(collectif.price_cents) },
             { label: 'DEADLINE', value: fmtDate(collectif.deadline) },
-          ].map(s => (
+          ]).map(s => (
             <View key={s.label} style={styles.stat}>
               <Text style={[styles.statLabel, { color: c.muted }]}>{s.label}</Text>
-              <Text style={[styles.statValue, { color: c.text }]}>{s.value}</Text>
+              <Text style={[styles.statValue, { color: c.text }]} numberOfLines={1}>{s.value}</Text>
             </View>
           ))}
         </View>
@@ -180,6 +204,21 @@ export default function CollectifDetailPanel() {
         <Text style={[styles.creator, { color: c.muted }]}>
           Proposed by {collectif.creator_display_name ?? 'a member'}
         </Text>
+
+        {/* Cross-surface: related popup event */}
+        {relatedPopup && (
+          <TouchableOpacity
+            style={[styles.crossSurface, { borderColor: c.border }]}
+            onPress={handleViewPopup}
+            activeOpacity={0.75}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.crossSurfaceLabel, { color: c.muted }]}>UPCOMING EVENT</Text>
+              <Text style={[styles.crossSurfaceName, { color: c.text }]}>{relatedPopup.name}</Text>
+            </View>
+            <Text style={[styles.crossSurfaceArrow, { color: c.accent }]}>→</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       {/* Footer CTA */}
@@ -192,7 +231,9 @@ export default function CollectifDetailPanel() {
             activeOpacity={0.8}
           >
             <Text style={[styles.commitBtnText, { color: c.panelBg }]}>
-              {committing ? 'Processing…' : `Commit · ${fmtCAD(collectif.price_cents)}`}
+              {committing ? 'Processing…' : isPopupType
+                ? `Commit deposit · ${fmtCAD(collectif.price_cents)}`
+                : `Commit · ${fmtCAD(collectif.price_cents)}`}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleWithdraw} disabled={withdrawing} activeOpacity={0.7}>
@@ -249,4 +290,12 @@ const styles = StyleSheet.create({
   commitBtnText: { fontFamily: fonts.dmMono, fontSize: 13, letterSpacing: 1 },
   withdrawLink: { fontFamily: fonts.dmMono, fontSize: 11, letterSpacing: 0.5 },
   gateNote: { fontFamily: fonts.dmSans, fontSize: 13, fontStyle: 'italic', textAlign: 'center' },
+  crossSurface: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth, borderRadius: 10,
+    padding: 14, marginTop: 20, gap: 10,
+  },
+  crossSurfaceLabel: { fontFamily: fonts.dmMono, fontSize: 8, letterSpacing: 1.5, marginBottom: 3 },
+  crossSurfaceName: { fontFamily: fonts.playfair, fontSize: 14 },
+  crossSurfaceArrow: { fontSize: 18 },
 });

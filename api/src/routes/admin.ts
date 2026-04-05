@@ -2423,4 +2423,49 @@ router.patch('/collectifs/:id/respond', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/admin/collectifs/:id/confirm-popup
+// Converts a funded popup-type collectif into an actual popup business record
+router.post('/collectifs/:id/confirm-popup', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'invalid_id' }); return; }
+
+  try {
+    const [collectif] = await db.select().from(collectifs).where(eq(collectifs.id, id)).limit(1);
+    if (!collectif) { res.status(404).json({ error: 'not_found' }); return; }
+    if ((collectif as any).collectif_type !== 'popup') { res.status(409).json({ error: 'not_a_popup_collectif' }); return; }
+    if (collectif.status !== 'funded') { res.status(409).json({ error: 'collectif_not_funded' }); return; }
+
+    const proposed_date = (collectif as any).proposed_date as string | null;
+    const proposed_venue = (collectif as any).proposed_venue as string | null;
+
+    // Parse proposed_date to a timestamp; fall back to 7 days from now
+    let launchedAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    if (proposed_date) {
+      const parsed = new Date(proposed_date);
+      if (!isNaN(parsed.getTime())) launchedAt = parsed;
+    }
+
+    const [popup] = await db.insert(businesses).values({
+      name: collectif.business_name,
+      type: 'popup',
+      address: proposed_venue ?? collectif.business_name,
+      city: 'Montréal',
+      launched_at: launchedAt,
+      capacity: collectif.target_quantity,
+      entrance_fee_cents: 0,
+      organizer_note: collectif.description ?? null,
+    } as any).returning();
+
+    await db.update(collectifs).set({
+      business_response: 'accepted',
+      responded_at: new Date(),
+    }).where(eq(collectifs.id, id));
+
+    res.status(201).json({ ok: true, popup_id: popup.id, popup });
+  } catch (err) {
+    logger.error('confirm-popup collectif', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

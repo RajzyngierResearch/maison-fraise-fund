@@ -45,6 +45,7 @@ export default function CollectifListPanel() {
     const progress = item.target_quantity > 0
       ? Math.min(1, item.current_quantity / item.target_quantity)
       : 0;
+    const isPopup = item.collectif_type === 'popup';
     return (
       <TouchableOpacity
         style={[styles.card, { borderColor: c.border, backgroundColor: c.card }]}
@@ -55,9 +56,15 @@ export default function CollectifListPanel() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: c.text }]}>{item.title}</Text>
             <Text style={[styles.business, { color: c.accent }]}>{item.business_name}</Text>
+            {isPopup && item.proposed_venue ? (
+              <Text style={[styles.business, { color: c.muted, marginTop: 1 }]}>{item.proposed_venue}</Text>
+            ) : null}
           </View>
           <View style={styles.discountBadge}>
-            <Text style={[styles.discountText, { color: c.accent }]}>{item.proposed_discount_pct}% off</Text>
+            {isPopup
+              ? <Text style={[styles.discountText, { color: c.accent }]}>POPUP</Text>
+              : <Text style={[styles.discountText, { color: c.accent }]}>{item.proposed_discount_pct}% off</Text>
+            }
           </View>
         </View>
 
@@ -67,7 +74,10 @@ export default function CollectifListPanel() {
 
         <View style={styles.cardFooter}>
           <Text style={[styles.meta, { color: c.muted }]}>
-            {item.current_quantity} / {item.target_quantity} · {fmtCAD(item.price_cents)}/unit
+            {isPopup
+              ? `${item.current_quantity} / ${item.target_quantity} attending · ${fmtCAD(item.price_cents)} deposit`
+              : `${item.current_quantity} / ${item.target_quantity} · ${fmtCAD(item.price_cents)}/unit`
+            }
           </Text>
           <Text style={[styles.meta, { color: c.muted }]}>{daysLeft(item.deadline)}</Text>
         </View>
