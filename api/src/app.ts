@@ -33,6 +33,7 @@ import tokensRouter from './routes/tokens';
 import patronagesRouter from './routes/patronages';
 import greenhousesRouter from './routes/greenhouses';
 import businessLocationsRouter from './routes/business-locations';
+import collectifsRouter from './routes/collectifs';
 import { logger } from './lib/logger';
 import { db } from './db';
 import { editorialPieces, users, memberships } from './db/schema';
@@ -91,6 +92,7 @@ app.use('/api/tokens', tokensRouter);
 app.use('/api/patronages', patronagesRouter);
 app.use('/api/greenhouses', greenhousesRouter);
 app.use('/api/business-locations', businessLocationsRouter);
+app.use('/api/collectifs', collectifsRouter);
 
 // POST /api/upload — Cloudinary media upload (50mb limit on this route only)
 app.post('/api/upload', express.json({ limit: '50mb' }), requireUser, async (req: any, res: any) => {

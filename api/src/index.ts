@@ -17,7 +17,7 @@ import cron from 'node-cron';
 import { and, eq, lte, gte, sql, isNull } from 'drizzle-orm';
 import app from './app';
 import { db } from './db';
-import { employmentContracts, standingOrders, orders, varieties, popupRsvps, users, membershipFunds, memberships } from './db/schema';
+import { employmentContracts, standingOrders, orders, varieties, popupRsvps, users, membershipFunds, memberships, collectifs, collectifCommitments } from './db/schema';
 import { seed } from './db/seed';
 import { logger } from './lib/logger';
 import { sendPushNotification } from './lib/push';
@@ -213,6 +213,38 @@ cron.schedule('0 9 * * *', async () => {
 
     console.log(`[cron] Renewal reminders sent (${expiring.length})`);
   } catch (e) { console.error('[cron] renewal reminder error', e); }
+});
+
+// Run every day at 01:00 — expire open collectifs past their deadline and refund all commitments
+cron.schedule('0 1 * * *', async () => {
+  try {
+    const now = new Date();
+    const expired = await db
+      .select({ id: collectifs.id, title: collectifs.title })
+      .from(collectifs)
+      .where(and(eq(collectifs.status, 'open'), lte(collectifs.deadline, now)));
+
+    for (const c of expired) {
+      try {
+        const commitments = await db
+          .select({ id: collectifCommitments.id, payment_intent_id: collectifCommitments.payment_intent_id })
+          .from(collectifCommitments)
+          .where(and(eq(collectifCommitments.collectif_id, c.id), eq(collectifCommitments.status, 'captured')));
+
+        for (const cm of commitments) {
+          try {
+            if (cm.payment_intent_id) {
+              await stripe.refunds.create({ payment_intent: cm.payment_intent_id });
+            }
+            await db.update(collectifCommitments).set({ status: 'refunded' }).where(eq(collectifCommitments.id, cm.id));
+          } catch (e) { logger.error(`[cron] collectif refund error commitment ${cm.id}`, e); }
+        }
+
+        await db.update(collectifs).set({ status: 'expired' }).where(eq(collectifs.id, c.id));
+        logger.info(`[cron] Collectif ${c.id} expired — ${commitments.length} commitments refunded`);
+      } catch (e) { logger.error(`[cron] collectif expire error ${c.id}`, e); }
+    }
+  } catch (e) { console.error('[cron] collectif expiry error', e); }
 });
 
 // Run January 1st at 00:01 — reset membership fund balances and expire memberships

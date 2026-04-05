@@ -55,6 +55,9 @@ import PortalSubscriberPanel from './panels/PortalSubscriberPanel';
 import PortalUploadPanel from './panels/PortalUploadPanel';
 import NfcWritePanel from './panels/NfcWritePanel';
 import OfferComposerPanel from './panels/OfferComposerPanel';
+import CollectifListPanel from './panels/CollectifListPanel';
+import CollectifDetailPanel from './panels/CollectifDetailPanel';
+import CollectifCreatePanel from './panels/CollectifCreatePanel';
 
 const PANELS: Record<string, React.ComponentType<any>> = {
   home: HomePanel,
@@ -110,6 +113,9 @@ const PANELS: Record<string, React.ComponentType<any>> = {
   'portal-upload': PortalUploadPanel,
   'nfc-write': NfcWritePanel,
   'offer-composer': OfferComposerPanel,
+  'collectif-list': CollectifListPanel,
+  'collectif-detail': CollectifDetailPanel,
+  'collectif-create': CollectifCreatePanel,
 };
 
 // Panels that should always expand the sheet to full height
@@ -124,6 +130,7 @@ const FULL_HEIGHT_PANELS = new Set([
   'chocolate-locations', 'chocolate-location-detail', 'operator-varieties', 'contacts',
   'portal-consent', 'portal-owner', 'portal-subscriber', 'portal-upload',
   'nfc-write', 'offer-composer',
+  'collectif-list', 'collectif-detail', 'collectif-create',
 ]);
 
 // Panels that expand to medium height

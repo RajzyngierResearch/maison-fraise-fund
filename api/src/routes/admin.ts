@@ -1,7 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { eq, isNull, sql, and, lte, sum, gte, desc, inArray, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
-import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist, portalAccess, portalContent, tokens, tokenTrades, tokenTradeOffers, seasonPatronages, patronTokens, greenhouses, provenanceTokens, locationFunding } from '../db/schema';
+import { orders, varieties, timeSlots, campaigns, campaignSignups, businesses, users, legitimacyEvents, locations, popupRsvps, popupNominations, djOffers, portraits, popupRequests, employmentContracts, contractRequests, businessVisits, referralCodes, editorialPieces, membershipFunds, memberships, membershipWaitlist, portalAccess, portalContent, tokens, tokenTrades, tokenTradeOffers, seasonPatronages, patronTokens, greenhouses, provenanceTokens, locationFunding, collectifs, collectifCommitments } from '../db/schema';
+import { stripe } from '../lib/stripe';
 import { logger } from '../lib/logger';
 import { sendOrderReady, sendContractOffer, sendAuditionResult } from '../lib/resend';
 import { sendPushNotification } from '../lib/push';
@@ -2346,6 +2347,77 @@ router.patch('/varieties/:id/sort-order', async (req: Request, res: Response) =>
       .returning();
     if (!updated) { res.status(404).json({ error: 'Variety not found' }); return; }
     res.json({ ok: true, id: updated.id, sort_order: updated.sort_order });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Admin: Collectifs ────────────────────────────��───────────────────────────
+
+// GET /api/admin/collectifs
+router.get('/collectifs', async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.execute(sql`
+      SELECT
+        c.*,
+        u.display_name AS creator_display_name,
+        (SELECT COUNT(*) FROM collectif_commitments cc WHERE cc.collectif_id = c.id AND cc.status = 'captured') AS commitment_count,
+        (SELECT COALESCE(SUM(amount_paid_cents), 0) FROM collectif_commitments cc WHERE cc.collectif_id = c.id AND cc.status = 'captured') AS total_committed_cents
+      FROM collectifs c
+      LEFT JOIN users u ON u.id = c.created_by
+      ORDER BY c.created_at DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/admin/collectifs/:id/respond — accept or decline on behalf of business
+router.patch('/collectifs/:id/respond', async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'invalid_id' }); return; }
+  const { response, note } = req.body;
+  if (response !== 'accepted' && response !== 'declined') {
+    res.status(400).json({ error: 'response must be accepted or declined' });
+    return;
+  }
+  try {
+    const [collectif] = await db.select().from(collectifs).where(eq(collectifs.id, id)).limit(1);
+    if (!collectif) { res.status(404).json({ error: 'not_found' }); return; }
+    if (collectif.status !== 'funded') { res.status(409).json({ error: 'collectif_not_funded' }); return; }
+
+    if (response === 'declined') {
+      // Refund all captured commitments
+      const commitments = await db
+        .select({ id: collectifCommitments.id, payment_intent_id: collectifCommitments.payment_intent_id, user_id: collectifCommitments.user_id })
+        .from(collectifCommitments)
+        .where(and(eq(collectifCommitments.collectif_id, id), eq(collectifCommitments.status, 'captured')));
+
+      for (const cm of commitments) {
+        try {
+          if (cm.payment_intent_id) {
+            await stripe.refunds.create({ payment_intent: cm.payment_intent_id });
+          }
+          await db.update(collectifCommitments).set({ status: 'refunded' }).where(eq(collectifCommitments.id, cm.id));
+        } catch (e) { /* log but continue */ }
+      }
+
+      await db.update(collectifs).set({
+        status: 'cancelled',
+        business_response: 'declined',
+        business_response_note: note ?? null,
+        responded_at: new Date(),
+      }).where(eq(collectifs.id, id));
+    } else {
+      await db.update(collectifs).set({
+        business_response: 'accepted',
+        business_response_note: note ?? null,
+        responded_at: new Date(),
+      }).where(eq(collectifs.id, id));
+    }
+
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

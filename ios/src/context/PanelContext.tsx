@@ -54,7 +54,10 @@ export type PanelId =
   | 'portal-subscriber'
   | 'portal-upload'
   | 'nfc-write'
-  | 'offer-composer';
+  | 'offer-composer'
+  | 'collectif-list'
+  | 'collectif-detail'
+  | 'collectif-create';
 
 export interface OrderState {
   variety_id: number | null;

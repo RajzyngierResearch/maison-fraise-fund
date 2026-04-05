@@ -4,7 +4,7 @@ import { eq, sql, and } from 'drizzle-orm';
 import crypto from 'crypto';
 import { stripe } from '../lib/stripe';
 import { db } from '../db';
-import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions, portalAccess, tokens, seasonPatronages, patronTokens, greenhouses, greenhouseFunding, provenanceTokens, locationFunding } from '../db/schema';
+import { orders, varieties, timeSlots, popupRsvps, popupRequests, campaignCommissions, users, businesses, memberships, membershipFunds, fundContributions, portalAccess, tokens, seasonPatronages, patronTokens, greenhouses, greenhouseFunding, provenanceTokens, locationFunding, collectifs, collectifCommitments } from '../db/schema';
 import { sendPushNotification } from '../lib/push';
 import { sendRsvpConfirmed, sendOrderConfirmation, sendTipReceived } from '../lib/resend';
 import { logger } from '../lib/logger';
@@ -566,6 +566,53 @@ router.post('/webhook', async (req: Request, res: Response) => {
         }
 
         logger.info(`Location ${businessId} funded by user ${userId} (10-year founding term)`);
+      } else if (type === 'collectif_commitment') {
+        const collectifId = parseInt(pi.metadata.collectif_id, 10);
+        const userId = parseInt(pi.metadata.user_id, 10);
+        const quantity = parseInt(pi.metadata.quantity, 10);
+
+        // Idempotency: skip if already captured
+        const [existingCommitment] = await db
+          .select({ id: collectifCommitments.id })
+          .from(collectifCommitments)
+          .where(eq(collectifCommitments.payment_intent_id, pi.id))
+          .limit(1);
+        if (existingCommitment) {
+          logger.info('Duplicate collectif webhook, skipping');
+        } else {
+          // Mark commitment as captured
+          await db.update(collectifCommitments)
+            .set({ status: 'captured' })
+            .where(eq(collectifCommitments.payment_intent_id, pi.id));
+
+          // Increment current_quantity atomically and check threshold
+          const [updated] = await db.update(collectifs)
+            .set({ current_quantity: sql`${collectifs.current_quantity} + ${quantity}` })
+            .where(eq(collectifs.id, collectifId))
+            .returning({ current_quantity: collectifs.current_quantity, target_quantity: collectifs.target_quantity, title: collectifs.title, status: collectifs.status });
+
+          if (updated && updated.current_quantity >= updated.target_quantity && updated.status === 'open') {
+            await db.update(collectifs).set({ status: 'funded' }).where(eq(collectifs.id, collectifId));
+
+            // Notify operator
+            db.select({ push_token: users.push_token })
+              .from(users)
+              .where(eq(users.email, process.env.OPERATOR_EMAIL ?? 'operator@maison-fraise.com'))
+              .limit(1)
+              .then(([op]) => {
+                if (op?.push_token) {
+                  sendPushNotification(op.push_token, {
+                    title: 'Collectif funded',
+                    body: `"${updated.title}" hit its target — respond to the group.`,
+                    data: { screen: 'collectifs' },
+                  });
+                }
+              })
+              .catch(() => {});
+          }
+
+          logger.info(`Collectif ${collectifId} commitment captured for user ${userId}`);
+        }
       }
     }
 

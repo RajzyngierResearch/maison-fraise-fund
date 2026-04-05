@@ -1239,3 +1239,60 @@ export async function fundChocolateLocation(
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'fund_failed'); }
   return r.json();
 }
+
+// ─── Collectifs ───────────────────────────────────────────────────────────────
+
+export async function fetchCollectifs(): Promise<any[]> {
+  const r = await fetch(`${BASE_URL}/api/collectifs`);
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'fetch_failed'); }
+  return r.json();
+}
+
+export async function fetchCollectif(id: number): Promise<any> {
+  const r = await fetch(`${BASE_URL}/api/collectifs/${id}`);
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'fetch_failed'); }
+  return r.json();
+}
+
+export async function createCollectif(payload: {
+  business_name: string;
+  business_id?: number;
+  title: string;
+  description?: string;
+  proposed_discount_pct: number;
+  price_cents: number;
+  target_quantity: number;
+  deadline: string;
+}): Promise<any> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/collectifs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'create_failed'); }
+  return r.json();
+}
+
+export async function commitToCollectif(
+  collectifId: number,
+  quantity: number,
+): Promise<{ client_secret: string; amount_cents: number }> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/collectifs/${collectifId}/commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...auth },
+    body: JSON.stringify({ quantity }),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'commit_failed'); }
+  return r.json();
+}
+
+export async function withdrawCollectif(collectifId: number): Promise<void> {
+  const auth = await authHeader();
+  const r = await fetch(`${BASE_URL}/api/collectifs/${collectifId}/commit`, {
+    method: 'DELETE',
+    headers: { ...auth },
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error ?? 'withdraw_failed'); }
+}
