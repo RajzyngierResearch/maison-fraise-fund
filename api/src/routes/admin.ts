@@ -2448,6 +2448,7 @@ router.post('/collectifs/:id/confirm-popup', async (req: Request, res: Response)
     const [popup] = await db.insert(businesses).values({
       name: collectif.business_name,
       type: 'popup',
+      location_type: 'popup',
       address: proposed_venue ?? collectif.business_name,
       city: 'Montréal',
       launched_at: launchedAt,

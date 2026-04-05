@@ -34,7 +34,7 @@ function formatPopupTime(iso?: string, hours?: string): string {
 }
 
 export default function PopupDetailPanel() {
-  const { goBack, activeLocation, showPanel, setPanelData } = usePanel() as any;
+  const { goBack, activeLocation, showPanel, setPanelData } = usePanel();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const c = useColors();
   const insets = useSafeAreaInsets();

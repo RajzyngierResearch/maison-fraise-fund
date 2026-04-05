@@ -59,8 +59,10 @@ router.get('/', async (_req: Request, res: Response) => {
   try {
     const rows = await db.execute(sql`
       SELECT
-        c.id, c.business_name, c.title, c.description,
+        c.id, c.business_name, c.collectif_type,
+        c.title, c.description,
         c.proposed_discount_pct, c.price_cents,
+        c.proposed_venue, c.proposed_date,
         c.target_quantity, c.current_quantity,
         c.deadline, c.status, c.created_at,
         u.display_name AS creator_display_name

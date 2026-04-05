@@ -1255,7 +1255,7 @@ export async function fetchCollectif(id: number): Promise<any> {
 }
 
 export async function fetchCollectifsByBusiness(businessName: string): Promise<any[]> {
-  const r = await fetch(`${BASE_URL}/api/collectifs?business=${encodeURIComponent(businessName)}`);
+  const r = await fetch(`${BASE_URL}/api/collectifs`);
   if (!r.ok) return [];
   const all: any[] = await r.json();
   return all.filter((c: any) => c.business_name.toLowerCase() === businessName.toLowerCase());
