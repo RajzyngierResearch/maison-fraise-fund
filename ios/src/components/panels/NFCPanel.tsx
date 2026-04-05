@@ -1,21 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import NfcManager, { NfcTech, Ndef } from 'react-native-nfc-manager';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { usePanel } from '../../context/PanelContext';
-import { useApp } from '../../../App';
 import * as Haptics from 'expo-haptics';
-import { verifyNfc } from '../../lib/api';
 import { setVerified } from '../../lib/userId';
 import { useColors, fonts } from '../../theme';
 import { SPACING } from '../../theme';
 
 export default function NFCPanel() {
-  const { goBack, showPanel, order } = usePanel();
-  const { reviewMode } = useApp();
+  const { goBack, showPanel } = usePanel();
   const c = useColors();
-  const [verifying, setVerifying] = useState(false);
-  const [scanning, setScanning] = useState(false);
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -29,51 +22,10 @@ export default function NFCPanel() {
     return () => anim.stop();
   }, []);
 
-  useEffect(() => {
-    if (reviewMode) return;
-    NfcManager.isSupported().then(supported => {
-      if (supported) startScan();
-    });
-    return () => { NfcManager.cancelTechnologyRequest().catch(() => {}); };
-  }, []);
-
-  const startScan = async () => {
-    setScanning(true);
-    try {
-      await NfcManager.requestTechnology(NfcTech.Ndef);
-      const tag = await NfcManager.getTag();
-      const record = tag?.ndefMessage?.[0];
-      if (!record?.payload) throw new Error('No data on chip.');
-      const token = Ndef.text.decodePayload(new Uint8Array(record.payload as number[]));
-      await doVerify(token);
-    } catch (err: any) {
-      if (err?.message !== 'UserCancel') {
-        Alert.alert('Could not read chip', 'Hold your phone steady against the chip and try again.');
-      }
-    } finally {
-      NfcManager.cancelTechnologyRequest().catch(() => {});
-      setScanning(false);
-    }
-  };
-
-  const doVerify = async (token: string) => {
-    if (verifying) return;
-    const stored = await AsyncStorage.getItem('user_db_id');
-    if (!stored) {
-      Alert.alert('Account required', 'Place an order first to link your account.');
-      return;
-    }
-    setVerifying(true);
-    try {
-      await verifyNfc(token, parseInt(stored, 10));
-      await setVerified();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showPanel('verified');
-    } catch (err: unknown) {
-      Alert.alert('Verification failed', err instanceof Error ? err.message : 'Try again.');
-    } finally {
-      setVerifying(false);
-    }
+  const handleContinue = async () => {
+    await setVerified();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showPanel('verified');
   };
 
   return (
@@ -82,7 +34,7 @@ export default function NFCPanel() {
         <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={[styles.backBtnText, { color: c.accent }]}>←</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: c.text }]}>Tap the box.</Text>
+        <Text style={[styles.title, { color: c.text }]}>Your box.</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -94,45 +46,20 @@ export default function NFCPanel() {
           </View>
         </View>
 
-        <Text style={[styles.subtitle, { color: scanning ? c.text : c.muted }]}>
-          {verifying
-            ? 'Verifying your token…'
-            : scanning
-              ? 'Hold the top of your phone against the NFC chip inside the lid.'
-              : 'Open your box and hold your phone to the chip inside the lid.'}
+        <Text style={[styles.subtitle, { color: c.text }]}>
+          We're working toward full chip verification as we grow.
+        </Text>
+        <Text style={[styles.body2, { color: c.muted }]}>
+          For now, collecting your order in person is all it takes.
         </Text>
 
-        {reviewMode ? (
-          order.nfc_token ? (
-            <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: c.border }]}
-              onPress={() => doVerify(order.nfc_token!)}
-              disabled={verifying}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.actionBtnText, { color: c.accent }]}>
-                {verifying ? 'Verifying…' : 'Simulate tap →'}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <Text style={[styles.fallbackText, { color: c.muted }]}>No NFC token on this order.</Text>
-          )
-        ) : (
-          <>
-            {!scanning && !verifying && (
-              <TouchableOpacity
-                style={[styles.actionBtn, { borderColor: c.border }]}
-                onPress={startScan}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.actionBtnText, { color: c.accent }]}>Try again</Text>
-              </TouchableOpacity>
-            )}
-            <Text style={[styles.fallbackText, { color: c.muted }]}>
-              Having trouble? Email us at hello@maisonfraise.com
-            </Text>
-          </>
-        )}
+        <TouchableOpacity
+          style={[styles.actionBtn, { borderColor: c.accent }]}
+          onPress={handleContinue}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.actionBtnText, { color: c.accent }]}>Continue →</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );

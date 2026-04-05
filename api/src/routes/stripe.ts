@@ -69,11 +69,28 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const customer_email = pi.metadata.customer_email;
         const discount_applied = pi.metadata.discount_applied === 'true';
 
-        // Decrement stock
-        await db
+        // Decrement stock and alert operator if low
+        const [stockAfter] = await db
           .update(varieties)
           .set({ stock_remaining: sql`stock_remaining - ${quantity}` })
-          .where(eq(varieties.id, variety_id));
+          .where(eq(varieties.id, variety_id))
+          .returning({ stock_remaining: varieties.stock_remaining, name: varieties.name });
+
+        if (stockAfter && stockAfter.stock_remaining <= 3) {
+          db.select({ push_token: users.push_token })
+            .from(users)
+            .where(eq(users.email, process.env.OPERATOR_EMAIL ?? 'operator@maison-fraise.com'))
+            .limit(1)
+            .then(([op]) => {
+              if (op?.push_token) {
+                sendPushNotification(op.push_token, {
+                  title: 'Low stock',
+                  body: `${stockAfter.name}: ${stockAfter.stock_remaining} remaining`,
+                });
+              }
+            })
+            .catch(() => {});
+        }
 
         // Generate NFC token
         const nfc_token = crypto.randomBytes(4).toString('hex');
